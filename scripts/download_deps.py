@@ -28,8 +28,8 @@ MIN_PAPER_BYTES = 35_000_000
 MIN_COMPACT_PLUGIN_BYTES = 30_000
 RETRIES = 3
 USER_AGENT = "loot-low-dependency-downloader/1.0 (https://github.com/Mr0007oo/loot-low)"
-GEYSER_VERSION = os.environ.get("GEYSER_VERSION") or "2.10.1"
-GEYSER_BUILD = os.environ.get("GEYSER_BUILD") or "1184"
+GEYSER_VERSION = os.environ.get("GEYSER_VERSION") or "2.11.2"
+GEYSER_BUILD = os.environ.get("GEYSER_BUILD") or "1235"
 GEYSER_BEDROCK_PROTOCOL = os.environ.get("GEYSER_BEDROCK_PROTOCOL") or "26_20"
 FLOODGATE_VERSION = os.environ.get("FLOODGATE_VERSION") or "2.2.5"
 FLOODGATE_BUILD = os.environ.get("FLOODGATE_BUILD") or "141"
@@ -47,6 +47,7 @@ class Artifact:
     filename: str
     minimum_bytes: int
     sources: tuple[Callable[[], Candidate], ...]
+    cleanup_patterns: tuple[str, ...] = ()
 
 
 def request(url: str, accept: str = "*/*") -> urllib.request.urlopen:
@@ -265,6 +266,11 @@ def download(artifact: Artifact) -> bool:
             continue
         print(f"  Source: {candidate.source}")
         if download_candidate(candidate, destination, artifact.minimum_bytes):
+            for pattern in artifact.cleanup_patterns:
+                for old_path in PLUGINS_DIR.glob(pattern):
+                    if old_path != destination:
+                        old_path.unlink()
+                        print(f"  Removed superseded plugin JAR: {old_path.name}")
             return True
     print(f"  ERROR: all approved sources failed for {artifact.filename}")
     return False
@@ -291,16 +297,17 @@ def main() -> int:
 
     artifacts = [
         Artifact("paper.jar", MIN_PAPER_BYTES, (paper_fill_api,)),
-        Artifact("Geyser-Spigot.jar", MIN_PLUGIN_BYTES, (pinned_geyser,)),
-        Artifact("Floodgate-Spigot.jar", MIN_PLUGIN_BYTES, (pinned_floodgate,)),
-        Artifact("ViaVersion.jar", MIN_PLUGIN_BYTES, github_with_modrinth("ViaVersion/ViaVersion", r"ViaVersion", "viaversion")),
-        Artifact("ViaBackwards.jar", MIN_PLUGIN_BYTES, github_with_modrinth("ViaVersion/ViaBackwards", r"ViaBackwards", "viabackwards")),
+        Artifact("Geyser-Spigot.jar", MIN_PLUGIN_BYTES, (pinned_geyser,), ("Geyser-Spigot*.jar",)),
+        Artifact("Floodgate-Spigot.jar", MIN_PLUGIN_BYTES, (pinned_floodgate,), ("Floodgate-Spigot*.jar",)),
+        Artifact("ViaVersion.jar", MIN_PLUGIN_BYTES, github_with_modrinth("ViaVersion/ViaVersion", r"ViaVersion", "viaversion"), ("ViaVersion-*.jar",)),
+        Artifact("ViaBackwards.jar", MIN_PLUGIN_BYTES, github_with_modrinth("ViaVersion/ViaBackwards", r"ViaBackwards", "viabackwards"), ("ViaBackwards-*.jar",)),
+        Artifact("ViaRewind.jar", MIN_PLUGIN_BYTES, github_with_modrinth("ViaVersion/ViaRewind", r"ViaRewind", "viarewind"), ("ViaRewind-*.jar",)),
         Artifact("LuckPerms.jar", MIN_PLUGIN_BYTES, (lambda: modrinth("luckperms", "LuckPerms-Bukkit", "v5.5.71-bukkit"),)),
         Artifact("EssentialsX.jar", MIN_PLUGIN_BYTES, github("EssentialsX/Essentials", r"EssentialsX-[^/]+\.jar", ("chat", "spawn", "discord", "geoip", "antibuild"))),
         Artifact("GSit.jar", MIN_PLUGIN_BYTES, modrinth_with_github("gsit", "Gecolay/GSit", r"GSit")),
         Artifact("Minepacks.jar", MIN_COMPACT_PLUGIN_BYTES, (lambda: modrinth("minepacks"), lambda: spiget(121240, "Minepacks Stable (1.21+)"))),
         Artifact("TAB.jar", MIN_PLUGIN_BYTES, (lambda: modrinth("tab-was-taken", "TAB"), lambda: github_release_page("NEZNAMY/TAB", r"TAB"))),
-        Artifact("voicechat-bukkit-2.6.24.jar", MIN_PLUGIN_BYTES, (lambda: modrinth("simple-voice-chat", "voicechat-bukkit", "bukkit-2.6.24"),)),
+        Artifact("voicechat-bukkit-2.6.24.jar", MIN_PLUGIN_BYTES, (lambda: modrinth("simple-voice-chat", "voicechat-bukkit", "bukkit-2.6.24"),), ("voicechat*.jar",)),
         Artifact("FastAsyncWorldEdit.jar", MIN_PLUGIN_BYTES, github_with_modrinth("IntellectualSites/FastAsyncWorldEdit", r"FastAsyncWorldEdit.*Bukkit", "fastasyncworldedit")),
         Artifact("MineResetLite.jar", MIN_COMPACT_PLUGIN_BYTES, (lambda: modrinth("mineresetlite"), lambda: spiget(88536, "MineResetLite updated fork"))),
     ]

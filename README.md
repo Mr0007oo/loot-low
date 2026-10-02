@@ -16,4 +16,4 @@ Player chat is enabled by default; Minecraft has no `enable-chat` key in `server
 
 Players can request a teleport with `/tpa <player>`. The target accepts with `/tpaccept` or refuses with `/tpdeny`. At startup the workflow grants those EssentialsX permissions to LuckPerms' `default` group, so they are available to ordinary players without operator access.
 
-Geyser-Spigot is pinned to 2.10.1 build 1184 and is rejected unless its JAR includes `bedrock/runtime_item_states.26_20.json`. Floodgate-Spigot is pinned to 2.2.5 build 141. The workflow caches `server/plugins/` so generated plugin settings and Floodgate keys survive between runs.
+Geyser-Spigot is pinned to 2.11.2 build 1235, the latest stable build verified to include `bedrock/runtime_item_states.26_20.json`; newer Geyser builds may drop support for that Bedrock protocol. Floodgate-Spigot is pinned to 2.2.5 build 141. ViaVersion, ViaBackwards, and ViaRewind are fetched from their latest stable GitHub releases, with superseded protocol JARs removed after successful downloads. The workflow caches `server/plugins/` so generated plugin settings and Floodgate keys survive between runs.

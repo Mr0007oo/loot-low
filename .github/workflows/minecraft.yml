@@ -69,8 +69,8 @@ jobs:
 
       - name: Download and validate Paper and plugins
         env:
-          GEYSER_VERSION: ${{ vars.GEYSER_VERSION || '2.10.1' }}
-          GEYSER_BUILD: ${{ vars.GEYSER_BUILD || '1184' }}
+          GEYSER_VERSION: ${{ vars.GEYSER_VERSION || '2.11.2' }}
+          GEYSER_BUILD: ${{ vars.GEYSER_BUILD || '1235' }}
           GEYSER_BEDROCK_PROTOCOL: ${{ vars.GEYSER_BEDROCK_PROTOCOL || '26_20' }}
           FLOODGATE_VERSION: ${{ vars.FLOODGATE_VERSION || '2.2.5' }}
           FLOODGATE_BUILD: ${{ vars.FLOODGATE_BUILD || '141' }}
@@ -230,7 +230,7 @@ jobs:
           fi
 
           PYTHONPATH=scripts .venv/bin/python -c 'from rcon_utils import rcon_command; print("RCON ready: " + rcon_command("list"))'
-          for plugin in ViaVersion ViaBackwards Geyser-Spigot floodgate voicechat Essentials LuckPerms; do
+          for plugin in ViaVersion ViaBackwards ViaRewind Geyser-Spigot floodgate voicechat Essentials LuckPerms; do
             if ! grep -Fq "Enabling ${plugin} v" "$server_log"; then
               echo "ERROR: ${plugin} did not report successful plugin enablement." >&2
               tail -n 80 "$server_log"
@@ -244,7 +244,7 @@ jobs:
               result = rcon_command(f"lp group default permission set {permission} true")
               print(f"LuckPerms default grant {permission}: {result}")
           PY
-          echo "Required plugins enabled: ViaVersion, ViaBackwards, Geyser-Spigot, floodgate, voicechat, Essentials, LuckPerms."
+          echo "Required plugins enabled: ViaVersion, ViaBackwards, ViaRewind, Geyser-Spigot, floodgate, voicechat, Essentials, LuckPerms."
           if [[ -n "$TELEGRAM_BOT_PID" ]]; then
             if ! kill -0 "$TELEGRAM_BOT_PID" 2>/dev/null; then
               cat server/logs/telegram-bot.log || true

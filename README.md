@@ -12,7 +12,7 @@ FRP forwards all three endpoints. The FRP host firewall and provider network rul
 
 Java players with the Simple Voice Chat client mod can open its in-game controls with the default `V` key. The client GUI provides microphone and voice-output controls, per-player volume, mute/deafen, and group controls; each player configures their own microphone and output device. The server plugin alone does not add these controls to an unmodded client.
 
-Player chat is enabled by default; Minecraft has no `enable-chat` key in `server.properties`. `online-mode=true` with Geyser's Floodgate authentication and `enforce-secure-profile=false` supports cross-play while keeping Java account authentication enabled.
+Player chat is enabled by default; Minecraft has no `enable-chat` key in `server.properties`. This server uses `online-mode=false` for offline/cracked Java access, `enforce-secure-profile=false`, and ViaVersion's `enforce-secure-chat=false` fallback. Geyser's `auth-type: floodgate` translates Bedrock chat through Floodgate; no extra chat toggle is required.
 
 Players can request a teleport with `/tpa <player>`. The target accepts with `/tpaccept` or refuses with `/tpdeny`. At startup the workflow grants those EssentialsX permissions to LuckPerms' `default` group, so they are available to ordinary players without operator access.
 

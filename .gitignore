@@ -1,5 +1,8 @@
 # Create gitignore file to exclude sensitive/large runtime files
 server/logs/
+server/world/
+server/world_nether/
+server/world_the_end/
 .venv/
 .runtime.frpc.toml
 frpc

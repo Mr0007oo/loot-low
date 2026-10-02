@@ -1,0 +1,8 @@
+bedrock:
+  address: 0.0.0.0
+  port: 19132
+  clone-remote-port: false
+remote:
+  address: auto
+  port: 25565
+  auth-type: floodgate

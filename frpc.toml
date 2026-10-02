@@ -15,3 +15,10 @@ type = "udp"
 localIP = "127.0.0.1"
 localPort = 19132
 remotePort = 19132
+
+[[proxies]]
+name = "minecraft-voice-chat"
+type = "udp"
+localIP = "127.0.0.1"
+localPort = 24454
+remotePort = 24454

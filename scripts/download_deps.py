@@ -31,6 +31,8 @@ USER_AGENT = "loot-low-dependency-downloader/1.0 (https://github.com/Mr0007oo/lo
 GEYSER_VERSION = os.environ.get("GEYSER_VERSION") or "2.10.1"
 GEYSER_BUILD = os.environ.get("GEYSER_BUILD") or "1184"
 GEYSER_BEDROCK_PROTOCOL = os.environ.get("GEYSER_BEDROCK_PROTOCOL") or "26_20"
+FLOODGATE_VERSION = os.environ.get("FLOODGATE_VERSION") or "2.2.5"
+FLOODGATE_BUILD = os.environ.get("FLOODGATE_BUILD") or "141"
 
 
 @dataclass(frozen=True)
@@ -69,20 +71,6 @@ def get_json(url: str) -> object:
             if attempt < RETRIES:
                 time.sleep(attempt)
     raise RuntimeError(f"API request failed after {RETRIES} attempts: {last_error}")
-
-
-def paper_v2() -> Candidate:
-    url = "https://api.papermc.io/v2/projects/paper/versions/1.21.1/builds"
-    builds = get_json(url)
-    if not isinstance(builds, dict) or not builds.get("builds"):
-        raise RuntimeError("PaperMC API v2 returned no builds")
-    stable = [build for build in builds["builds"] if build.get("channel", "default") == "default"]
-    build = max(stable or builds["builds"], key=lambda item: item["build"])
-    number = build["build"]
-    return Candidate(
-        f"https://api.papermc.io/v2/projects/paper/versions/1.21.1/builds/{number}/downloads/paper-1.21.1-{number}.jar",
-        "PaperMC API v2",
-    )
 
 
 def paper_fill_api() -> Candidate:
@@ -124,6 +112,14 @@ def pinned_geyser() -> Candidate:
         GEYSER_BUILD,
         f"bedrock/runtime_item_states.{GEYSER_BEDROCK_PROTOCOL}.json",
     )
+
+
+def pinned_floodgate() -> Candidate:
+    if not re.fullmatch(r"\d+\.\d+\.\d+", FLOODGATE_VERSION):
+        raise RuntimeError(f"Invalid FLOODGATE_VERSION: {FLOODGATE_VERSION!r}")
+    if not re.fullmatch(r"\d+", FLOODGATE_BUILD):
+        raise RuntimeError(f"Invalid FLOODGATE_BUILD: {FLOODGATE_BUILD!r}")
+    return geyser_api("floodgate", "Floodgate-Spigot", FLOODGATE_VERSION, FLOODGATE_BUILD)
 
 
 def github_asset(repository: str, pattern: str, excluded: tuple[str, ...] = ()) -> Candidate:
@@ -168,13 +164,21 @@ def github_release_page(repository: str, pattern: str, excluded: tuple[str, ...]
     return Candidate(assets[0], f"official GitHub release mirror ({repository})")
 
 
-def modrinth(project: str, preferred_filename: str | None = None) -> Candidate:
+def modrinth(
+    project: str,
+    preferred_filename: str | None = None,
+    version_number: str | None = None,
+) -> Candidate:
     url = "https://api.modrinth.com/v2/project/" + urllib.parse.quote(project) + "/version?" + urllib.parse.urlencode(
         {"game_versions": json.dumps(["1.21.1"])}
     )
     versions = get_json(url)
     if not isinstance(versions, list) or not versions:
         raise RuntimeError(f"Modrinth has no compatible 1.21.1 versions for {project}")
+    if version_number:
+        versions = [version for version in versions if version.get("version_number") == version_number]
+        if not versions:
+            raise RuntimeError(f"Modrinth has no compatible {version_number} version for {project}")
     for version in versions:
         files = [file for file in version.get("files", []) if file.get("filename", "").lower().endswith(".jar")]
         if preferred_filename:
@@ -286,15 +290,17 @@ def main() -> int:
     )
 
     artifacts = [
-        Artifact("paper.jar", MIN_PAPER_BYTES, (paper_v2, paper_fill_api)),
+        Artifact("paper.jar", MIN_PAPER_BYTES, (paper_fill_api,)),
         Artifact("Geyser-Spigot.jar", MIN_PLUGIN_BYTES, (pinned_geyser,)),
-        Artifact("Floodgate-Spigot.jar", MIN_PLUGIN_BYTES, (lambda: geyser_api("floodgate", "Floodgate-Spigot"), lambda: github_release_page("GeyserMC/Floodgate", r"Floodgate-Spigot"))),
+        Artifact("Floodgate-Spigot.jar", MIN_PLUGIN_BYTES, (pinned_floodgate,)),
         Artifact("ViaVersion.jar", MIN_PLUGIN_BYTES, github_with_modrinth("ViaVersion/ViaVersion", r"ViaVersion", "viaversion")),
         Artifact("ViaBackwards.jar", MIN_PLUGIN_BYTES, github_with_modrinth("ViaVersion/ViaBackwards", r"ViaBackwards", "viabackwards")),
+        Artifact("LuckPerms.jar", MIN_PLUGIN_BYTES, (lambda: modrinth("luckperms", "LuckPerms-Bukkit", "v5.5.71-bukkit"),)),
         Artifact("EssentialsX.jar", MIN_PLUGIN_BYTES, github("EssentialsX/Essentials", r"EssentialsX-[^/]+\.jar", ("chat", "spawn", "discord", "geoip", "antibuild"))),
         Artifact("GSit.jar", MIN_PLUGIN_BYTES, modrinth_with_github("gsit", "Gecolay/GSit", r"GSit")),
         Artifact("Minepacks.jar", MIN_COMPACT_PLUGIN_BYTES, (lambda: modrinth("minepacks"), lambda: spiget(121240, "Minepacks Stable (1.21+)"))),
         Artifact("TAB.jar", MIN_PLUGIN_BYTES, (lambda: modrinth("tab-was-taken", "TAB"), lambda: github_release_page("NEZNAMY/TAB", r"TAB"))),
+        Artifact("voicechat-bukkit-2.6.24.jar", MIN_PLUGIN_BYTES, (lambda: modrinth("simple-voice-chat", "voicechat-bukkit", "bukkit-2.6.24"),)),
         Artifact("FastAsyncWorldEdit.jar", MIN_PLUGIN_BYTES, github_with_modrinth("IntellectualSites/FastAsyncWorldEdit", r"FastAsyncWorldEdit.*Bukkit", "fastasyncworldedit")),
         Artifact("MineResetLite.jar", MIN_COMPACT_PLUGIN_BYTES, (lambda: modrinth("mineresetlite"), lambda: spiget(88536, "MineResetLite updated fork"))),
     ]

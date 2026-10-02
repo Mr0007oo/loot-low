@@ -56,21 +56,24 @@ jobs:
             command -v "$tool" >/dev/null || { echo "Missing required system tool: $tool" >&2; exit 1; }
           done
 
-      - name: Restore and save world data
+      - name: Restore and save world and plugin data
         uses: actions/cache@v4
         with:
           path: |
             server/world
             server/world_nether
             server/world_the_end
+            server/plugins
           key: minecraft-world-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: minecraft-world-
 
       - name: Download and validate Paper and plugins
         env:
-          GEYSER_VERSION: ${{ vars.GEYSER_VERSION }}
-          GEYSER_BUILD: ${{ vars.GEYSER_BUILD }}
-          GEYSER_BEDROCK_PROTOCOL: ${{ vars.GEYSER_BEDROCK_PROTOCOL }}
+          GEYSER_VERSION: ${{ vars.GEYSER_VERSION || '2.10.1' }}
+          GEYSER_BUILD: ${{ vars.GEYSER_BUILD || '1184' }}
+          GEYSER_BEDROCK_PROTOCOL: ${{ vars.GEYSER_BEDROCK_PROTOCOL || '26_20' }}
+          FLOODGATE_VERSION: ${{ vars.FLOODGATE_VERSION || '2.2.5' }}
+          FLOODGATE_BUILD: ${{ vars.FLOODGATE_BUILD || '141' }}
         run: python3 scripts/download_deps.py
 
       - name: Download and validate FRP client
@@ -130,6 +133,9 @@ jobs:
           TELEGRAM_BOT_PID=""
           AUTO_SAVE_PID=""
           WATCHDOG_PID=""
+          LOG_TAIL_PID=""
+          tail -n 0 -F "$server_log" &
+          LOG_TAIL_PID=$!
 
           notify() {
             local message="$1"
@@ -155,6 +161,10 @@ jobs:
               kill -TERM "$WATCHDOG_PID" 2>/dev/null || true
               wait "$WATCHDOG_PID" 2>/dev/null || true
             fi
+            if [[ -n "${LOG_TAIL_PID:-}" ]] && kill -0 "$LOG_TAIL_PID" 2>/dev/null; then
+              kill -TERM "$LOG_TAIL_PID" 2>/dev/null || true
+              wait "$LOG_TAIL_PID" 2>/dev/null || true
+            fi
           }
           trap cleanup EXIT
           trap 'exit 143' INT TERM
@@ -172,9 +182,11 @@ jobs:
           fi
           java_address="${FRP_SERVER_IP}:25565"
           bedrock_address="${FRP_SERVER_IP}:19132/UDP"
+          voice_chat_address="${FRP_SERVER_IP}:24454/UDP"
           echo "FRP Java tunnel: ${java_address}"
           echo "FRP Bedrock tunnel: ${bedrock_address}"
-          notify "Minecraft Java TCP: ${java_address}; Bedrock UDP: ${bedrock_address}"
+          echo "FRP Simple Voice Chat tunnel: ${voice_chat_address}"
+          notify "Minecraft Java TCP: ${java_address}; Bedrock UDP: ${bedrock_address}; Simple Voice Chat UDP: ${voice_chat_address}"
           export FRPC_PID FRPC_BIN="$PWD/frpc" FRPC_CONFIG="$PWD/frpc.toml" FRPC_LOG="$PWD/frpc.log"
 
           if [[ -n "$TELEGRAM_BOT_TOKEN" && -n "$TELEGRAM_CHAT_ID" ]]; then
@@ -218,14 +230,21 @@ jobs:
           fi
 
           PYTHONPATH=scripts .venv/bin/python -c 'from rcon_utils import rcon_command; print("RCON ready: " + rcon_command("list"))'
-          for plugin in ViaVersion ViaBackwards Geyser-Spigot floodgate; do
+          for plugin in ViaVersion ViaBackwards Geyser-Spigot floodgate voicechat Essentials LuckPerms; do
             if ! grep -Fq "Enabling ${plugin} v" "$server_log"; then
               echo "ERROR: ${plugin} did not report successful plugin enablement." >&2
               tail -n 80 "$server_log"
               exit 1
             fi
           done
-          echo "Protocol plugins enabled: ViaVersion, ViaBackwards, Geyser-Spigot, floodgate."
+          PYTHONPATH=scripts .venv/bin/python - <<'PY'
+          from rcon_utils import rcon_command
+
+          for permission in ("essentials.tpa", "essentials.tpaccept", "essentials.tpdeny"):
+              result = rcon_command(f"lp group default permission set {permission} true")
+              print(f"LuckPerms default grant {permission}: {result}")
+          PY
+          echo "Required plugins enabled: ViaVersion, ViaBackwards, Geyser-Spigot, floodgate, voicechat, Essentials, LuckPerms."
           if [[ -n "$TELEGRAM_BOT_PID" ]]; then
             if ! kill -0 "$TELEGRAM_BOT_PID" 2>/dev/null; then
               cat server/logs/telegram-bot.log || true

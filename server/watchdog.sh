@@ -77,7 +77,7 @@ notify_frp() {
         curl --silent --show-error --fail --max-time 15 --request POST \
             "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
             --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}" \
-            --data-urlencode "text=FRP Minecraft tunnels restored. Java TCP: ${address}:25565; Bedrock UDP: ${address}:19132" \
+            --data-urlencode "text=FRP Minecraft tunnels restored. Java TCP: ${address}:25565; Bedrock UDP: ${address}:19132; Simple Voice Chat UDP: ${address}:24454" \
             >/dev/null || log "WARNING: Telegram endpoint update failed."
     fi
 }
@@ -119,7 +119,7 @@ if ! kill -0 "$FRPC_PID" 2>/dev/null; then
     log "ERROR: frpc is not running."
     exit 1
 fi
-log "FRP TCP/UDP proxies are active for ${FRP_SERVER_IP}:25565 and ${FRP_SERVER_IP}:19132."
+log "FRP TCP/UDP proxies are active for Java ${FRP_SERVER_IP}:25565, Bedrock ${FRP_SERVER_IP}:19132, and Simple Voice Chat ${FRP_SERVER_IP}:24454."
 start_server
 
 while true; do

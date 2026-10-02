@@ -1,8 +1,9 @@
 # Create gitignore file to exclude sensitive/large runtime files
-server/plugins/Playit/
-server/playit.toml
 server/logs/
 .venv/
+.runtime.frpc.toml
+frpc
+frpc-release.tar.gz
 __pycache__/
 *.py[cod]
 *.log

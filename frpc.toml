@@ -1,0 +1,17 @@
+serverAddr = "{{ .Envs.FRP_SERVER_IP }}"
+serverPort = 7000
+auth.token = "{{ .Envs.FRP_TOKEN }}"
+
+[[proxies]]
+name = "minecraft-java"
+type = "tcp"
+localIP = "127.0.0.1"
+localPort = 25565
+remotePort = 25565
+
+[[proxies]]
+name = "minecraft-bedrock"
+type = "udp"
+localIP = "127.0.0.1"
+localPort = 19132
+remotePort = 19132

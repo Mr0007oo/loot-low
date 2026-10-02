@@ -3,10 +3,10 @@ set -uo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
 SERVER_DIR="$ROOT_DIR/server"
-PLAYIT_BIN="${PLAYIT_BIN:-$ROOT_DIR/playit}"
-PLAYIT_SOCKET="${PLAYIT_SOCKET:-/tmp/playit_runtime/playit-agent.sock}"
+FRPC_BIN="${FRPC_BIN:-$ROOT_DIR/frpc}"
+FRPC_CONFIG="${FRPC_CONFIG:-$ROOT_DIR/frpc.toml}"
 SERVER_LAUNCHER="${SERVER_LAUNCHER:-$SERVER_DIR/start.sh}"
-PLAYIT_LOG="${PLAYIT_LOG:-$ROOT_DIR/playit.log}"
+FRPC_LOG="${FRPC_LOG:-$ROOT_DIR/frpc.log}"
 SERVER_LOG="${SERVER_LOG:-$SERVER_DIR/logs/server-session.log}"
 WATCHDOG_LOG="${WATCHDOG_LOG:-$SERVER_DIR/logs/watchdog-health.log}"
 PYTHON_BIN="${PYTHON_BIN:-$ROOT_DIR/.venv/bin/python}"
@@ -15,7 +15,7 @@ if [[ ! -x "$PYTHON_BIN" ]]; then
 fi
 POLL_INTERVAL_SECONDS="${WATCHDOG_INTERVAL_SECONDS:-30}"
 SERVER_PID=""
-PLAYIT_PID=""
+FRPC_PID="${FRPC_PID:-}"
 
 log() {
     printf '[%s] %s\n' "$(date -Is)" "$*" | tee -a "$WATCHDOG_LOG"
@@ -41,19 +41,23 @@ cleanup() {
         log "Pushing final world files after Paper shutdown."
         "$PYTHON_BIN" "$ROOT_DIR/scripts/persist_world.py" --skip-rcon || log "ERROR: final world push failed."
     fi
-    stop_process "$PLAYIT_PID"
+    stop_process "$FRPC_PID"
     exit "$exit_status"
 }
 
 trap cleanup EXIT
 trap 'exit 143' INT TERM
 
-if [[ -z "${PLAYIT_SECRET_KEY:-}" ]]; then
-    echo "ERROR: PLAYIT_SECRET_KEY is required for headless Playit startup." >&2
+if [[ -z "${FRP_SERVER_IP:-}" || -z "${FRP_TOKEN:-}" ]]; then
+    echo "ERROR: FRP_SERVER_IP and FRP_TOKEN are required for FRP startup." >&2
     exit 1
 fi
-if [[ ! -x "$PLAYIT_BIN" ]]; then
-    echo "ERROR: Playit binary is missing or not executable: $PLAYIT_BIN" >&2
+if [[ ! -x "$FRPC_BIN" ]]; then
+    echo "ERROR: frpc binary is missing or not executable: $FRPC_BIN" >&2
+    exit 1
+fi
+if [[ ! -s "$FRPC_CONFIG" ]]; then
+    echo "ERROR: FRP config is missing: $FRPC_CONFIG" >&2
     exit 1
 fi
 if [[ ! -x "$SERVER_LAUNCHER" ]]; then
@@ -65,53 +69,30 @@ if [[ ! "$POLL_INTERVAL_SECONDS" =~ ^[1-9][0-9]*$ ]]; then
     exit 1
 fi
 
-mkdir -p "$HOME/.config/playit_gg" /tmp/playit_runtime "$SERVER_DIR/logs"
-chmod 700 /tmp/playit_runtime
-printf 'secret = "%s"\n' "$PLAYIT_SECRET_KEY" >"$HOME/.config/playit_gg/playit.toml" || exit 1
-chmod 600 "$HOME/.config/playit_gg/playit.toml" || exit 1
+mkdir -p "$SERVER_DIR/logs"
 
-start_playit() {
-    : >"$PLAYIT_LOG"
-    rm -f -- "$PLAYIT_SOCKET"
-    XDG_RUNTIME_DIR=/tmp/playit_runtime "$PLAYIT_BIN" --socket-path "$PLAYIT_SOCKET" >"$PLAYIT_LOG" 2>&1 &
-    PLAYIT_PID=$!
-    log "Started Playit (pid=$PLAYIT_PID)."
+notify_frp() {
+    local address="$1"
+    if [[ -n "${TELEGRAM_BOT_TOKEN:-}" && -n "${TELEGRAM_CHAT_ID:-}" ]]; then
+        curl --silent --show-error --fail --max-time 15 --request POST \
+            "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}" \
+            --data-urlencode "text=FRP Minecraft tunnels restored. Java TCP: ${address}:25565; Bedrock UDP: ${address}:19132" \
+            >/dev/null || log "WARNING: Telegram endpoint update failed."
+    fi
 }
 
-verify_playit() {
+start_frpc() {
+    : >"$FRPC_LOG"
+    "$FRPC_BIN" -c "$FRPC_CONFIG" >>"$FRPC_LOG" 2>&1 &
+    FRPC_PID=$!
+    log "Started frpc using $FRPC_CONFIG (pid=$FRPC_PID)."
     sleep 5
-    if ! kill -0 "$PLAYIT_PID" 2>/dev/null; then
-        if wait "$PLAYIT_PID"; then
-            playit_status=0
-        else
-            playit_status=$?
-        fi
-        cat "$PLAYIT_LOG" || true
-        log "ERROR: Playit exited during startup (status $playit_status)."
+    if ! kill -0 "$FRPC_PID" 2>/dev/null; then
+        cat "$FRPC_LOG" || true
+        log "ERROR: frpc exited during startup."
         return 1
     fi
-    if grep -Fq 'playitd error: IPC error' "$PLAYIT_LOG"; then
-        cat "$PLAYIT_LOG"
-        log "ERROR: Playit reported an IPC error."
-        return 1
-    fi
-    if ! grep -Eiq '(^|[^[:alpha:]])connected([^[:alpha:]]|$)|tunnel.*(ready|online)|assigned.*address' "$PLAYIT_LOG"; then
-        cat "$PLAYIT_LOG"
-        log "ERROR: Playit did not confirm a connection."
-        return 1
-    fi
-    if ! grep -Eiq '(tcp|stream).{0,120}25565|25565.{0,120}(tcp|stream)' "$PLAYIT_LOG"; then
-        cat "$PLAYIT_LOG"
-        log "ERROR: Playit log does not confirm a TCP mapping to port 25565. Configure the Java tunnel in the Playit dashboard."
-        return 1
-    fi
-    if ! grep -Eiq '(udp|datagram).{0,120}19132|19132.{0,120}(udp|datagram)' "$PLAYIT_LOG"; then
-        cat "$PLAYIT_LOG"
-        log "ERROR: Playit log does not confirm a UDP mapping to port 19132. Configure the Bedrock tunnel in the Playit dashboard."
-        return 1
-    fi
-    cat "$PLAYIT_LOG"
-    log "Verified Playit TCP 25565 and UDP 19132 mappings."
 }
 
 start_server() {
@@ -121,36 +102,44 @@ start_server() {
 }
 
 log_usage() {
-    local java_pid java_usage server_children playit_usage host_memory
+    local java_pid java_usage server_children frpc_usage host_memory
     java_pid=$(pgrep -f '[j]ava.*-jar paper[.]jar' | head -n 1 || true)
     java_usage=$(ps --no-headers -o %cpu=,rss= -p "${java_pid:-}" 2>/dev/null | tr -d '\n' || true)
     server_children=$(ps --no-headers -o pid=,comm=,%cpu=,rss= --ppid "$SERVER_PID" 2>/dev/null | tr '\n' ';' || true)
-    playit_usage=$(ps --no-headers -o %cpu=,rss= -p "$PLAYIT_PID" 2>/dev/null | tr -d '\n' || true)
+    frpc_usage=$(ps --no-headers -o %cpu=,rss= -p "$FRPC_PID" 2>/dev/null | tr -d '\n' || true)
     host_memory=$(free -m 2>/dev/null | awk '/^Mem:/ { printf "used=%sMiB available=%sMiB", $3, $7 }' || true)
-    log "Health sample: paper_pid=\"${java_pid:-not-running}\" paper_cpu_rss=\"${java_usage:-unavailable}\" server_children=\"${server_children:-none}\" playit_cpu_rss=\"${playit_usage:-unavailable}\" memory=\"${host_memory:-unavailable}\""
+    log "Health sample: paper_pid=\"${java_pid:-not-running}\" paper_cpu_rss=\"${java_usage:-unavailable}\" server_children=\"${server_children:-none}\" frpc_cpu_rss=\"${frpc_usage:-unavailable}\" memory=\"${host_memory:-unavailable}\""
 }
 
-start_playit
-if ! verify_playit; then
+if [[ -z "$FRPC_PID" ]]; then
+    start_frpc || exit 1
+fi
+if ! kill -0 "$FRPC_PID" 2>/dev/null; then
+    cat "$FRPC_LOG" || true
+    log "ERROR: frpc is not running."
     exit 1
 fi
+log "FRP TCP/UDP proxies are active for ${FRP_SERVER_IP}:25565 and ${FRP_SERVER_IP}:19132."
 start_server
 
 while true; do
     sleep "$POLL_INTERVAL_SECONDS" || true
     log_usage
 
-    if ! kill -0 "$PLAYIT_PID" 2>/dev/null; then
-        if wait "$PLAYIT_PID"; then
-            playit_status=0
+    if ! kill -0 "$FRPC_PID" 2>/dev/null; then
+        cat "$FRPC_LOG" || true
+        if wait "$FRPC_PID" 2>/dev/null; then
+            frpc_status=0
         else
-            playit_status=$?
+            frpc_status=$?
         fi
-        log "Playit exited with status $playit_status; restarting tunnel agent."
-        start_playit
-        if ! verify_playit; then
+        log "frpc exited with status $frpc_status; restarting from config."
+        if ! start_frpc; then
+            log "ERROR: frpc recovery failed."
             exit 1
         fi
+        log "FRP proxies restored from config."
+        notify_frp "$FRP_SERVER_IP"
     fi
 
     if ! kill -0 "$SERVER_PID" 2>/dev/null; then

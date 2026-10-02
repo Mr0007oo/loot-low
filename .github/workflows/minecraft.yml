@@ -17,6 +17,9 @@ jobs:
     timeout-minutes: 350
     permissions:
       contents: write
+    env:
+      FRP_SERVER_IP: ${{ secrets.FRP_SERVER_IP }}
+      FRP_TOKEN: ${{ secrets.FRP_TOKEN }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -49,7 +52,7 @@ jobs:
 
       - name: Verify runtime system tools
         run: |
-          for tool in java git curl sed; do
+          for tool in java git curl sed tar; do
             command -v "$tool" >/dev/null || { echo "Missing required system tool: $tool" >&2; exit 1; }
           done
 
@@ -66,16 +69,32 @@ jobs:
       - name: Download and validate Paper and plugins
         run: python3 scripts/download_deps.py
 
-      - name: Download Playit agent
+      - name: Download and validate FRP client
         shell: bash
         run: |
           set -euo pipefail
-          if [[ ! -f ./playit ]]; then
-            curl --fail --silent --show-error --location --retry 3 --retry-all-errors \
-              https://github.com/playit-cloud/playit-agent/releases/latest/download/playit-linux-amd64 \
-              --output playit
+          if [[ -z "$FRP_SERVER_IP" || -z "$FRP_TOKEN" ]]; then
+            echo "ERROR: FRP_SERVER_IP and FRP_TOKEN secrets are required." >&2
+            exit 1
           fi
-          chmod +x playit
+          release_json=$(curl --fail --silent --show-error --location --retry 3 --retry-all-errors \
+            https://api.github.com/repos/fatedier/frp/releases/latest)
+          archive_url=$(python3 -c 'import json,sys; data=json.load(sys.stdin); print(next((asset["browser_download_url"] for asset in data.get("assets", []) if asset.get("name", "").endswith("_linux_amd64.tar.gz")), ""))' <<<"$release_json")
+          if [[ -z "$archive_url" ]]; then
+            echo "ERROR: Could not find an FRP Linux amd64 release archive." >&2
+            exit 1
+          fi
+          curl --fail --silent --show-error --location --retry 3 --retry-all-errors \
+            "$archive_url" --output frpc-release.tar.gz
+          tar -xzf frpc-release.tar.gz --wildcards '*/frpc'
+          extracted_frpc=$(find . -mindepth 2 -maxdepth 3 -type f -name frpc -print -quit)
+          if [[ -z "$extracted_frpc" ]]; then
+            echo "ERROR: FRP release archive did not contain frpc." >&2
+            exit 1
+          fi
+          mv "$extracted_frpc" ./frpc
+          chmod +x ./frpc
+          ./frpc verify -c frpc.toml
 
       - name: Send boot notification
         env:
@@ -92,12 +111,11 @@ jobs:
             --data-urlencode "text=Booting Minecraft server for Mr0007oo/loot-low with Java 21." \
             >/dev/null || echo "WARNING: Telegram boot notification failed."
 
-      - name: Start Playit and Paper
+      - name: Start FRP and Paper
         id: run-server
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          PLAYIT_SECRET_KEY: ${{ secrets.PLAYIT_SECRET_KEY }}
           RCON_PASSWORD: ${{ secrets.RCON_PASSWORD }}
         shell: bash
         run: |
@@ -139,6 +157,22 @@ jobs:
 
           ./scripts/auto_save.sh >server/logs/auto-save-loop.log 2>&1 &
           AUTO_SAVE_PID=$!
+
+          ./frpc -c frpc.toml >frpc.log 2>&1 &
+          FRPC_PID=$!
+          sleep 5
+          if ! kill -0 "$FRPC_PID" 2>/dev/null; then
+            cat frpc.log || true
+            echo "ERROR: frpc exited during startup." >&2
+            exit 1
+          fi
+          java_address="${FRP_SERVER_IP}:25565"
+          bedrock_address="${FRP_SERVER_IP}:19132/UDP"
+          echo "FRP Java tunnel: ${java_address}"
+          echo "FRP Bedrock tunnel: ${bedrock_address}"
+          notify "Minecraft Java TCP: ${java_address}; Bedrock UDP: ${bedrock_address}"
+          export FRPC_PID FRPC_BIN="$PWD/frpc" FRPC_CONFIG="$PWD/frpc.toml" FRPC_LOG="$PWD/frpc.log"
+
           if [[ -n "$TELEGRAM_BOT_TOKEN" && -n "$TELEGRAM_CHAT_ID" ]]; then
             .venv/bin/python scripts/telegram_bot.py >server/logs/telegram-bot.log 2>&1 &
             TELEGRAM_BOT_PID=$!
@@ -156,7 +190,7 @@ jobs:
               break
             fi
             if grep -Fq 'ERROR:' server/logs/watchdog.log 2>/dev/null; then
-              cat server/logs/watchdog.log playit.log 2>/dev/null || true
+              cat server/logs/watchdog.log frpc.log 2>/dev/null || true
               exit 1
             fi
             if ! kill -0 "$WATCHDOG_PID" 2>/dev/null; then
@@ -166,7 +200,7 @@ jobs:
                 server_status=$?
               fi
               tail -n 30 "$server_log" || true
-              cat playit.log server/logs/watchdog.log 2>/dev/null || true
+              cat frpc.log server/logs/watchdog.log 2>/dev/null || true
               exit "${server_status:-1}"
             fi
             sleep 1
@@ -174,7 +208,7 @@ jobs:
 
           if [[ "$ready" != true ]]; then
             tail -n 30 "$server_log" || true
-            cat server/logs/watchdog.log playit.log 2>/dev/null || true
+            cat server/logs/watchdog.log frpc.log 2>/dev/null || true
             notify "Minecraft startup timed out before Paper reported ready. Check the Actions log."
             exit 1
           fi

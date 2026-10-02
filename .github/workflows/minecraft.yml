@@ -28,14 +28,30 @@ jobs:
           java-version: '21'
 
       - name: Set up Python and bot dependencies
+        id: setup-python
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
 
+      - name: Cache Python virtual environment
+        uses: actions/cache@v4
+        with:
+          path: .venv
+          key: ${{ runner.os }}-python-venv-${{ steps.setup-python.outputs.python-version }}-${{ hashFiles('requirements.txt') }}
+
       - name: Install Telegram and RCON packages
         run: |
-          python3 -m venv .venv
-          .venv/bin/pip install --disable-pip-version-check mcrcon requests
+          if [[ ! -x .venv/bin/python ]]; then
+            python3 -m venv .venv
+          fi
+          .venv/bin/python -m pip install --disable-pip-version-check --upgrade pip
+          .venv/bin/python -m pip install --disable-pip-version-check -r requirements.txt
+
+      - name: Verify runtime system tools
+        run: |
+          for tool in java git curl sed; do
+            command -v "$tool" >/dev/null || { echo "Missing required system tool: $tool" >&2; exit 1; }
+          done
 
       - name: Restore and save world data
         uses: actions/cache@v4
@@ -46,7 +62,6 @@ jobs:
             server/world_the_end
           key: minecraft-world-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: minecraft-world-
-          save-always: true
 
       - name: Download and validate Paper and plugins
         run: python3 scripts/download_deps.py
@@ -89,6 +104,7 @@ jobs:
           set -uo pipefail
           mkdir -p server/logs
           server_log="server/logs/server-session.log"
+          : >"$server_log"
           TELEGRAM_BOT_PID=""
           AUTO_SAVE_PID=""
           WATCHDOG_PID=""
@@ -139,6 +155,10 @@ jobs:
               ready=true
               break
             fi
+            if grep -Fq 'ERROR:' server/logs/watchdog.log 2>/dev/null; then
+              cat server/logs/watchdog.log playit.log 2>/dev/null || true
+              exit 1
+            fi
             if ! kill -0 "$WATCHDOG_PID" 2>/dev/null; then
               if wait "$WATCHDOG_PID"; then
                 server_status=0
@@ -154,9 +174,26 @@ jobs:
 
           if [[ "$ready" != true ]]; then
             tail -n 30 "$server_log" || true
+            cat server/logs/watchdog.log playit.log 2>/dev/null || true
             notify "Minecraft startup timed out before Paper reported ready. Check the Actions log."
             exit 1
           fi
+
+          PYTHONPATH=scripts .venv/bin/python -c 'from rcon_utils import rcon_command; print("RCON ready: " + rcon_command("list"))'
+          if [[ -n "$TELEGRAM_BOT_PID" ]]; then
+            if ! kill -0 "$TELEGRAM_BOT_PID" 2>/dev/null; then
+              cat server/logs/telegram-bot.log || true
+              echo "ERROR: Telegram bot exited during startup." >&2
+              exit 1
+            fi
+            cat server/logs/telegram-bot.log
+          fi
+          if [[ -n "$AUTO_SAVE_PID" ]] && ! kill -0 "$AUTO_SAVE_PID" 2>/dev/null; then
+            cat server/logs/auto-save-loop.log || true
+            echo "ERROR: World auto-save loop exited during startup." >&2
+            exit 1
+          fi
+          cat server/logs/auto-save-loop.log || true
 
           ready_log=$(tail -n 8 "$server_log" | sed -E 's/\x1B\[[0-9;]*[[:alpha:]]//g' | cut -c1-300 | tr -d '\r')
           notify "Minecraft is READY on Mr0007oo/loot-low.\n\n${ready_log}"

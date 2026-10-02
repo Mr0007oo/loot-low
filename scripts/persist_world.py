@@ -12,6 +12,8 @@ import sys
 import time
 from pathlib import Path
 
+from rcon_utils import rcon_command
+
 ROOT = Path(__file__).resolve().parents[1]
 PERSIST_PATHS = (
     "server/world",
@@ -20,6 +22,12 @@ PERSIST_PATHS = (
     "server/ops.json",
     "server/banned-players.json",
     "server/usercache.json",
+)
+TRANSIENT_EXCLUDES = (
+    ":(exclude,glob)**/session.lock",
+    ":(exclude,glob)**/*.lock",
+    ":(exclude,glob)**/*.tmp",
+    ":(exclude,glob)**/*.part",
 )
 
 
@@ -38,17 +46,7 @@ def run_git(arguments: list[str], *, check: bool = True) -> subprocess.Completed
 
 
 def save_all() -> str:
-    password = os.environ.get("RCON_PASSWORD", "")
-    if not password:
-        raise RuntimeError("RCON_PASSWORD is required to save the Minecraft world")
-    try:
-        from mcrcon import MCRcon
-    except ImportError as exc:
-        raise RuntimeError("mcrcon is not installed; install workflow Python dependencies") from exc
-
-    port = int(os.environ.get("RCON_PORT", "25575"))
-    with MCRcon("127.0.0.1", password, port=port) as connection:
-        response = connection.command("save-all")
+    response = rcon_command("save-all")
     print(f"RCON save-all: {response or 'command sent'}", flush=True)
     time.sleep(5)
     return response
@@ -60,12 +58,12 @@ def commit_and_push() -> bool:
         print("No world or player-data files exist yet.")
         return False
 
-    run_git(["add", "-f", "--", *available_paths])
+    run_git(["add", "-f", "--", *available_paths, *TRANSIENT_EXCLUDES])
     staged = run_git(["diff", "--cached", "--quiet", "--", *available_paths], check=False)
     if staged.returncode == 1:
         run_git(["config", "user.name", "github-actions[bot]"])
         run_git(["config", "user.email", "41898282+github-actions[bot]@users.noreply.github.com"])
-        run_git(["commit", "--only", "-m", "Persist Minecraft world [skip ci]", "--", *available_paths])
+        run_git(["commit", "-m", "Persist Minecraft world [skip ci]"])
         print("Committed changed world and player data.")
     elif staged.returncode == 0:
         print("No world or player-data changes to commit.")
@@ -79,9 +77,27 @@ def commit_and_push() -> bool:
     if not branch:
         raise RuntimeError("Cannot determine the branch to push world data to")
 
-    run_git(["push", "origin", f"HEAD:refs/heads/{branch}"])
-    print(f"Committed and pushed world data to {branch}.")
-    return True
+    for attempt in range(1, 4):
+        push = run_git(["push", "origin", f"HEAD:refs/heads/{branch}"], check=False)
+        if push.returncode == 0:
+            print(f"Committed and pushed world data to {branch}.")
+            return True
+        if attempt == 3:
+            detail = push.stderr.strip() or push.stdout.strip()
+            raise RuntimeError(f"Git push failed after {attempt} attempts: {detail}")
+
+        run_git(["fetch", "origin", branch])
+        rebase = run_git(
+            ["rebase", "--autostash", "-X", "theirs", f"origin/{branch}"],
+            check=False,
+        )
+        if rebase.returncode:
+            run_git(["rebase", "--abort"], check=False)
+            detail = rebase.stderr.strip() or rebase.stdout.strip()
+            raise RuntimeError(f"Cannot rebase world commit onto origin/{branch}: {detail}")
+        time.sleep(2**attempt)
+
+    raise RuntimeError("Git push retry limit reached")
 
 
 def main() -> int:

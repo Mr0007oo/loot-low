@@ -12,7 +12,9 @@ import time
 from pathlib import Path
 
 import requests
-from mcrcon import MCRcon
+import psutil
+
+from rcon_utils import rcon_command
 
 ROOT = Path(__file__).resolve().parents[1]
 TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
@@ -34,11 +36,6 @@ def validate_environment() -> None:
     ]
     if missing:
         raise RuntimeError(f"Missing required environment variables: {', '.join(missing)}")
-
-
-def rcon_command(command: str) -> str:
-    with MCRcon("127.0.0.1", RCON_PASSWORD, port=RCON_PORT) as connection:
-        return connection.command(command)
 
 
 def send_message(chat_id: int | str, text: str, *, html_format: bool = False) -> None:
@@ -78,16 +75,13 @@ def process_metrics() -> str:
     pid = result.stdout.splitlines()[0] if result.returncode == 0 and result.stdout else ""
     if not pid:
         return "Paper JVM: not running"
-    usage = subprocess.run(
-        ["ps", "-o", "%cpu=,rss=", "-p", pid],
-        capture_output=True,
-        text=True,
-        check=False,
-    ).stdout.strip()
-    if not usage:
+    try:
+        process = psutil.Process(int(pid))
+        cpu = process.cpu_percent(interval=0.1)
+        rss = process.memory_info().rss
+    except (psutil.NoSuchProcess, psutil.AccessDenied, ValueError):
         return f"Paper JVM PID {pid}: usage unavailable"
-    cpu, rss_kib = usage.split(maxsplit=1)
-    return f"Paper JVM PID {pid}: CPU {cpu}%, RAM {int(rss_kib) // 1024} MiB RSS"
+    return f"Paper JVM PID {pid}: CPU {cpu:.1f}%, RAM {rss // (1024 * 1024)} MiB RSS"
 
 
 def persist_world() -> str:
@@ -162,12 +156,21 @@ def handle_message(message: dict) -> None:
 def main() -> int:
     try:
         validate_environment()
+        response = requests.get(f"{API_URL}/getMe", timeout=20)
+        response.raise_for_status()
+        telegram_identity = response.json()
+        if not telegram_identity.get("ok"):
+            raise RuntimeError("Telegram rejected the bot token")
     except RuntimeError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1
+    except requests.RequestException as exc:
+        print(f"ERROR: Telegram bot API is unavailable: {exc}", file=sys.stderr)
+        return 1
 
     offset = 0
-    print("Telegram RCON bot started; only the configured chat ID is authorized.", flush=True)
+    bot_username = telegram_identity.get("result", {}).get("username", "unknown")
+    print(f"Telegram bot @{bot_username} connected; only the configured chat ID is authorized.", flush=True)
     while True:
         try:
             response = requests.get(

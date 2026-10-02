@@ -51,7 +51,25 @@ restart_count=0
 max_restarts=3
 while true; do
     echo "[$(date -Is)] Starting Paper 1.21.1 (restart ${restart_count}/${max_restarts})."
-    java -Xms2G -Xmx6G -XX:+UseG1GC -XX:+ParallelRefProcEnabled -XX:MaxGCPauseMillis=200 -XX:+UnlockExperimentalVMOptions -XX:+DisableExplicitGC -jar paper.jar nogui &
+    java -Xms4000M -Xmx5120M \
+        -XX:+UseG1GC \
+        -XX:+ParallelRefProcEnabled \
+        -XX:MaxGCPauseMillis=200 \
+        -XX:+UnlockExperimentalVMOptions \
+        -XX:+DisableExplicitGC \
+        -XX:+AlwaysPreTouch \
+        -XX:G1NewSizePercent=30 \
+        -XX:G1MaxNewSizePercent=40 \
+        -XX:G1HeapRegionSize=8M \
+        -XX:G1ReservePercent=15 \
+        -XX:G1HeapWastePercent=5 \
+        -XX:G1MixedGCCountTarget=4 \
+        -XX:InitiatingHeapOccupancyPercent=15 \
+        -XX:G1MixedGCLiveThresholdPercent=90 \
+        -XX:G1RSetUpdatingPauseTimePercent=5 \
+        -XX:SurvivorRatio=8 \
+        -XX:+UseStringDeduplication \
+        -jar paper.jar --nogui &
     server_pid=$!
 
     if wait "$server_pid"; then

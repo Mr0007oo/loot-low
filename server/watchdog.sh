@@ -4,6 +4,7 @@ set -uo pipefail
 ROOT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
 SERVER_DIR="$ROOT_DIR/server"
 PLAYIT_BIN="${PLAYIT_BIN:-$ROOT_DIR/playit}"
+PLAYIT_SOCKET="${PLAYIT_SOCKET:-/tmp/playit_runtime/playit-agent.sock}"
 SERVER_LAUNCHER="${SERVER_LAUNCHER:-$SERVER_DIR/start.sh}"
 PLAYIT_LOG="${PLAYIT_LOG:-$ROOT_DIR/playit.log}"
 SERVER_LOG="${SERVER_LOG:-$SERVER_DIR/logs/server-session.log}"
@@ -65,12 +66,14 @@ if [[ ! "$POLL_INTERVAL_SECONDS" =~ ^[1-9][0-9]*$ ]]; then
 fi
 
 mkdir -p "$HOME/.config/playit_gg" /tmp/playit_runtime "$SERVER_DIR/logs"
+chmod 700 /tmp/playit_runtime
 printf 'secret = "%s"\n' "$PLAYIT_SECRET_KEY" >"$HOME/.config/playit_gg/playit.toml" || exit 1
 chmod 600 "$HOME/.config/playit_gg/playit.toml" || exit 1
 
 start_playit() {
     : >"$PLAYIT_LOG"
-    XDG_RUNTIME_DIR=/tmp/playit_runtime "$PLAYIT_BIN" >"$PLAYIT_LOG" 2>&1 &
+    rm -f -- "$PLAYIT_SOCKET"
+    XDG_RUNTIME_DIR=/tmp/playit_runtime "$PLAYIT_BIN" --socket-path "$PLAYIT_SOCKET" >"$PLAYIT_LOG" 2>&1 &
     PLAYIT_PID=$!
     log "Started Playit (pid=$PLAYIT_PID)."
 }

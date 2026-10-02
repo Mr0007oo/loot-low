@@ -1,0 +1,187 @@
+name: Minecraft Server
+
+on:
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: minecraft-server-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  run-server:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    permissions:
+      contents: write
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Python and bot dependencies
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Telegram and RCON packages
+        run: |
+          python3 -m venv .venv
+          .venv/bin/pip install --disable-pip-version-check mcrcon requests
+
+      - name: Restore and save world data
+        uses: actions/cache@v4
+        with:
+          path: |
+            server/world
+            server/world_nether
+            server/world_the_end
+          key: minecraft-world-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: minecraft-world-
+          save-always: true
+
+      - name: Download and validate Paper and plugins
+        run: python3 scripts/download_deps.py
+
+      - name: Download Playit agent
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! -f ./playit ]]; then
+            curl --fail --silent --show-error --location --retry 3 --retry-all-errors \
+              https://github.com/playit-cloud/playit-agent/releases/latest/download/playit-linux-amd64 \
+              --output playit
+          fi
+          chmod +x playit
+
+      - name: Send boot notification
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          if [[ -z "$TELEGRAM_BOT_TOKEN" || -z "$TELEGRAM_CHAT_ID" ]]; then
+            echo "Telegram secrets are not configured; skipping boot notification."
+            exit 0
+          fi
+          curl --silent --show-error --fail --max-time 15 --request POST \
+            "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}" \
+            --data-urlencode "text=Booting Minecraft server for Mr0007oo/loot-low with Java 21." \
+            >/dev/null || echo "WARNING: Telegram boot notification failed."
+
+      - name: Start Playit and Paper
+        id: run-server
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          PLAYIT_SECRET_KEY: ${{ secrets.PLAYIT_SECRET_KEY }}
+          RCON_PASSWORD: ${{ secrets.RCON_PASSWORD }}
+        shell: bash
+        run: |
+          set -uo pipefail
+          mkdir -p server/logs
+          server_log="server/logs/server-session.log"
+          TELEGRAM_BOT_PID=""
+          AUTO_SAVE_PID=""
+          WATCHDOG_PID=""
+
+          notify() {
+            local message="$1"
+            if [[ -n "$TELEGRAM_BOT_TOKEN" && -n "$TELEGRAM_CHAT_ID" ]]; then
+              curl --silent --show-error --fail --max-time 15 --request POST \
+                "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+                --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}" \
+                --data-urlencode "text=${message}" >/dev/null || echo "WARNING: Telegram notification failed."
+            fi
+          }
+
+          cleanup() {
+            trap - EXIT INT TERM
+            if [[ -n "${TELEGRAM_BOT_PID:-}" ]] && kill -0 "$TELEGRAM_BOT_PID" 2>/dev/null; then
+              kill -TERM "$TELEGRAM_BOT_PID" 2>/dev/null || true
+              wait "$TELEGRAM_BOT_PID" 2>/dev/null || true
+            fi
+            if [[ -n "${AUTO_SAVE_PID:-}" ]] && kill -0 "$AUTO_SAVE_PID" 2>/dev/null; then
+              kill -TERM "$AUTO_SAVE_PID" 2>/dev/null || true
+              wait "$AUTO_SAVE_PID" 2>/dev/null || true
+            fi
+            if [[ -n "${WATCHDOG_PID:-}" ]] && kill -0 "$WATCHDOG_PID" 2>/dev/null; then
+              kill -TERM "$WATCHDOG_PID" 2>/dev/null || true
+              wait "$WATCHDOG_PID" 2>/dev/null || true
+            fi
+          }
+          trap cleanup EXIT
+          trap 'exit 143' INT TERM
+
+          ./scripts/auto_save.sh >server/logs/auto-save-loop.log 2>&1 &
+          AUTO_SAVE_PID=$!
+          if [[ -n "$TELEGRAM_BOT_TOKEN" && -n "$TELEGRAM_CHAT_ID" ]]; then
+            .venv/bin/python scripts/telegram_bot.py >server/logs/telegram-bot.log 2>&1 &
+            TELEGRAM_BOT_PID=$!
+          else
+            echo "WARNING: Telegram bot secrets are not configured; RCON bot will not start."
+          fi
+
+          ./server/watchdog.sh >server/logs/watchdog.log 2>&1 &
+          WATCHDOG_PID=$!
+
+          ready=false
+          for ((second = 0; second < 180; second++)); do
+            if grep -Fq 'Done (' "$server_log"; then
+              ready=true
+              break
+            fi
+            if ! kill -0 "$WATCHDOG_PID" 2>/dev/null; then
+              if wait "$WATCHDOG_PID"; then
+                server_status=0
+              else
+                server_status=$?
+              fi
+              tail -n 30 "$server_log" || true
+              cat playit.log server/logs/watchdog.log 2>/dev/null || true
+              exit "${server_status:-1}"
+            fi
+            sleep 1
+          done
+
+          if [[ "$ready" != true ]]; then
+            tail -n 30 "$server_log" || true
+            notify "Minecraft startup timed out before Paper reported ready. Check the Actions log."
+            exit 1
+          fi
+
+          ready_log=$(tail -n 8 "$server_log" | sed -E 's/\x1B\[[0-9;]*[[:alpha:]]//g' | cut -c1-300 | tr -d '\r')
+          notify "Minecraft is READY on Mr0007oo/loot-low.\n\n${ready_log}"
+
+          if wait "$WATCHDOG_PID"; then
+            server_status=0
+          else
+            server_status=$?
+          fi
+          exit "$server_status"
+
+      - name: Send shutdown and world-save notification
+        if: always()
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          SERVER_STEP_OUTCOME: ${{ steps.run-server.outcome }}
+        run: |
+          if [[ -z "$TELEGRAM_BOT_TOKEN" || -z "$TELEGRAM_CHAT_ID" ]]; then
+            echo "Telegram secrets are not configured; skipping shutdown notification."
+            exit 0
+          fi
+          message="Minecraft workflow ended. Server step: ${SERVER_STEP_OUTCOME}. World and player data are pushed to Git when changed."
+          curl --silent --show-error --fail --max-time 15 --request POST \
+            "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}" \
+            --data-urlencode "text=${message}" \
+            >/dev/null || echo "WARNING: Telegram shutdown notification failed."

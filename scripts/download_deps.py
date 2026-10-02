@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import sys
 import tempfile
@@ -27,12 +28,16 @@ MIN_PAPER_BYTES = 35_000_000
 MIN_COMPACT_PLUGIN_BYTES = 30_000
 RETRIES = 3
 USER_AGENT = "loot-low-dependency-downloader/1.0 (https://github.com/Mr0007oo/loot-low)"
+GEYSER_VERSION = os.environ.get("GEYSER_VERSION") or "2.10.1"
+GEYSER_BUILD = os.environ.get("GEYSER_BUILD") or "1184"
+GEYSER_BEDROCK_PROTOCOL = os.environ.get("GEYSER_BEDROCK_PROTOCOL") or "26_20"
 
 
 @dataclass(frozen=True)
 class Candidate:
     url: str
     source: str
+    required_member: str | None = None
 
 
 @dataclass(frozen=True)
@@ -91,10 +96,33 @@ def paper_fill_api() -> Candidate:
     return Candidate(build["downloads"]["server:default"]["url"], "PaperMC official fill API v3")
 
 
-def geyser_api(project: str, label: str) -> Candidate:
+def geyser_api(
+    project: str,
+    label: str,
+    version: str = "latest",
+    build: str = "latest",
+    required_member: str | None = None,
+) -> Candidate:
     return Candidate(
-        f"https://download.geysermc.org/v2/projects/{project}/versions/latest/builds/latest/downloads/spigot",
-        f"GeyserMC API v2 ({label})",
+        f"https://download.geysermc.org/v2/projects/{project}/versions/{version}/builds/{build}/downloads/spigot",
+        f"GeyserMC API v2 ({label} {version} build {build})",
+        required_member,
+    )
+
+
+def pinned_geyser() -> Candidate:
+    if not re.fullmatch(r"\d+\.\d+\.\d+", GEYSER_VERSION):
+        raise RuntimeError(f"Invalid GEYSER_VERSION: {GEYSER_VERSION!r}")
+    if not re.fullmatch(r"\d+", GEYSER_BUILD):
+        raise RuntimeError(f"Invalid GEYSER_BUILD: {GEYSER_BUILD!r}")
+    if not re.fullmatch(r"\d+_\d+", GEYSER_BEDROCK_PROTOCOL):
+        raise RuntimeError(f"Invalid GEYSER_BEDROCK_PROTOCOL: {GEYSER_BEDROCK_PROTOCOL!r}")
+    return geyser_api(
+        "geyser",
+        "Geyser-Spigot",
+        GEYSER_VERSION,
+        GEYSER_BUILD,
+        f"bedrock/runtime_item_states.{GEYSER_BEDROCK_PROTOCOL}.json",
     )
 
 
@@ -162,12 +190,18 @@ def spiget(resource_id: int, name: str) -> Candidate:
     return Candidate(f"https://api.spiget.org/v2/resources/{resource_id}/download", f"Spiget API redirect to Spigot resource ({name})")
 
 
-def validate_jar(path: Path, minimum_bytes: int) -> tuple[bool, str]:
+def validate_jar(
+    path: Path,
+    minimum_bytes: int,
+    required_member: str | None = None,
+) -> tuple[bool, str]:
     size = path.stat().st_size
     if size < minimum_bytes:
         return False, f"only {size:,} bytes; minimum is {minimum_bytes:,} bytes"
     try:
         with zipfile.ZipFile(path) as archive:
+            if required_member and required_member not in archive.namelist():
+                return False, f"missing required JAR entry: {required_member}"
             bad_member = archive.testzip()
             if bad_member:
                 return False, f"corrupt ZIP member: {bad_member}"
@@ -200,7 +234,7 @@ def download_candidate(candidate: Candidate, destination: Path, minimum_bytes: i
                         raise RuntimeError(f"HTTP {response.status}")
                     while chunk := response.read(1024 * 1024):
                         temp.write(chunk)
-            valid, detail = validate_jar(temp_path, minimum_bytes)
+            valid, detail = validate_jar(temp_path, minimum_bytes, candidate.required_member)
             if not valid:
                 raise RuntimeError(detail)
             temp_path.replace(destination)
@@ -253,7 +287,7 @@ def main() -> int:
 
     artifacts = [
         Artifact("paper.jar", MIN_PAPER_BYTES, (paper_v2, paper_fill_api)),
-        Artifact("Geyser-Spigot.jar", MIN_PLUGIN_BYTES, (lambda: geyser_api("geyser", "Geyser-Spigot"), lambda: modrinth("geyser", "Geyser-Spigot.jar"), lambda: github_release_page("GeyserMC/Geyser", r"Geyser-Spigot"))),
+        Artifact("Geyser-Spigot.jar", MIN_PLUGIN_BYTES, (pinned_geyser,)),
         Artifact("Floodgate-Spigot.jar", MIN_PLUGIN_BYTES, (lambda: geyser_api("floodgate", "Floodgate-Spigot"), lambda: github_release_page("GeyserMC/Floodgate", r"Floodgate-Spigot"))),
         Artifact("ViaVersion.jar", MIN_PLUGIN_BYTES, github_with_modrinth("ViaVersion/ViaVersion", r"ViaVersion", "viaversion")),
         Artifact("ViaBackwards.jar", MIN_PLUGIN_BYTES, github_with_modrinth("ViaVersion/ViaBackwards", r"ViaBackwards", "viabackwards")),

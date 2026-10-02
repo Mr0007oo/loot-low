@@ -67,6 +67,10 @@ jobs:
           restore-keys: minecraft-world-
 
       - name: Download and validate Paper and plugins
+        env:
+          GEYSER_VERSION: ${{ vars.GEYSER_VERSION }}
+          GEYSER_BUILD: ${{ vars.GEYSER_BUILD }}
+          GEYSER_BEDROCK_PROTOCOL: ${{ vars.GEYSER_BEDROCK_PROTOCOL }}
         run: python3 scripts/download_deps.py
 
       - name: Download and validate FRP client
@@ -214,6 +218,14 @@ jobs:
           fi
 
           PYTHONPATH=scripts .venv/bin/python -c 'from rcon_utils import rcon_command; print("RCON ready: " + rcon_command("list"))'
+          for plugin in ViaVersion ViaBackwards Geyser-Spigot floodgate; do
+            if ! grep -Fq "Enabling ${plugin} v" "$server_log"; then
+              echo "ERROR: ${plugin} did not report successful plugin enablement." >&2
+              tail -n 80 "$server_log"
+              exit 1
+            fi
+          done
+          echo "Protocol plugins enabled: ViaVersion, ViaBackwards, Geyser-Spigot, floodgate."
           if [[ -n "$TELEGRAM_BOT_PID" ]]; then
             if ! kill -0 "$TELEGRAM_BOT_PID" 2>/dev/null; then
               cat server/logs/telegram-bot.log || true

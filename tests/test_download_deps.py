@@ -145,6 +145,11 @@ class BedrockRuntimeTests(unittest.TestCase):
         )
         project = tomllib.loads(manifest.read_text(encoding="utf-8"))["project"]
         self.assertEqual(project["dependencies"], ["endstone==0.11.2"])
+        self.assertEqual(project["name"], "endstone-lootlow-bedrock")
+        self.assertEqual(
+            project["entry-points"]["endstone"]["endstone-lootlow-bedrock"],
+            "lootlow_bedrock:LootLowPlugin",
+        )
         launcher = (
             Path(__file__).parents[1] / "server" / "start.sh"
         ).read_text(encoding="utf-8")

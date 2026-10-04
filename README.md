@@ -22,39 +22,17 @@ The Bedrock server uses Xbox Live authentication (`online-mode=true`). Endstone
 0.11.2 targets BDS 1.26.3.1; `allow-outdated-client=true` allows older protocol
 clients where supported, but only a real 1.26.2 client handshake can confirm
 playability. The dependency setup purges the previous BDS runtime while
-preserving worlds and plugin data, verifies the binary against Mojang's
-published archive digest, and checks Endstone's embedded target before the
-server process starts. CI uses Endstone's `--yes --no-interactive` options.
-Python 3.13 installs and launches Endstone and the in-repository plugin.
+preserving worlds and server access configuration, verifies the binary against
+Mojang's published archive digest, and checks Endstone's embedded target before
+the server process starts. CI uses Endstone's `--yes --no-interactive` options.
+Python 3.13 installs and launches Endstone. No custom Python or Java plugins
+are installed; the launcher removes the retired `endstone-lootlow-bedrock`
+distribution from an existing virtual environment before starting.
 
-## Native plugin features
-
-The Endstone plugin in `server/plugins/lootlow_bedrock/` provides:
-
-- `/sethome [name]` and `/home [name]` for personal homes.
-- `/setwarp <name>` and `/warp [name]` for operator-managed server warps.
-- `/claim` and `/unclaim` for one 17-by-17 area per player, protecting blocks,
-  block interactions, and explosion damage.
-- `/enderchest` for a Bedrock form-based view of the player's native Ender
-  Chest, with item transfers to and from the player's inventory.
-- `/backpack` for a persistent 27-slot personal backpack. Item type, count,
-  and Bedrock item data are stored; custom item metadata is not supported.
-- `/worldedit pos1`, `/worldedit pos2`, and `/worldedit set <block>` (also
-  `/bedrockedit` or `/we`) for operator-only cuboid edits, capped at 32,768
-  blocks. The selection corners use the player's current block positions and
-  edits are applied in small batches to avoid long server ticks.
-
-Homes, warps, claims, and backpack data are stored in
-`server/bedrock_server/plugins/lootlow_bedrock/data/` and persisted by the
-workflow.
-
-## Health display
-
-The former TAB plugin fabricated a below-name value with `%health%` and a heart
-glyph, which produced raw health numbers and a stray icon for Bedrock players.
-That Java overlay has been removed. The Endstone plugin now registers a native
-scoreboard objective with the `HEARTS` render type in the `BELOW_NAME` display
-slot and updates it once per second from each player's health.
+The server listens on UDP 19132, binds to `0.0.0.0`, allows supported outdated
+clients, and disables server telemetry in `server/server.properties`. The
+configured view distance is 8 chunks and tick distance is 4 chunks to limit
+server workload while retaining normal gameplay.
 
 ## World data
 
@@ -66,6 +44,6 @@ loaded by the Bedrock server and are not automatically converted. Back up or
 convert any world you want to keep before using a Bedrock-compatible world
 converter.
 
-The workflow restores cached Bedrock world/plugin data and commits it back to
-the current branch after the server stops. The Endstone runtime and generated
-virtual environment are downloaded on demand and are not committed.
+The workflow restores cached Bedrock world and access data and commits it back
+to the current branch after the server stops. The Endstone runtime and
+generated virtual environment are downloaded on demand and are not committed.

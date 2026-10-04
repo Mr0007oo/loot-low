@@ -15,7 +15,6 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 PERSIST_PATHS = (
     "server/bedrock_server/worlds",
-    "server/bedrock_server/plugins/lootlow_bedrock/data",
     "server/permissions.json",
     "server/allowlist.json",
 )

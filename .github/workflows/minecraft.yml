@@ -33,7 +33,7 @@ jobs:
 
       - name: Validate native server code and configuration
         run: |
-          python3 -m compileall -q scripts tests server/plugins/lootlow_bedrock/src
+          python3 -m compileall -q scripts tests
           python3 -m unittest discover -s tests -v
           bash -n server/start.sh server/watchdog.sh
           python3 -m json.tool server/permissions.json >/dev/null
@@ -51,6 +51,7 @@ jobs:
               "server-port": "19132",
               "server-ip": "0.0.0.0",
               "allow-outdated-client": "true",
+              "emit-server-telemetry": "false",
           }
           mismatches = {
               key: (properties.get(key), value)
@@ -60,19 +61,12 @@ jobs:
           if mismatches:
               raise SystemExit(f"Invalid Bedrock network settings (actual, expected): {mismatches}")
           PY
-          python3 -m pip wheel --disable-pip-version-check --no-deps \
-            --wheel-dir "$RUNNER_TEMP" server/plugins/lootlow_bedrock
-          if find server/plugins -type f -name '*.jar' -print -quit | grep -q .; then
-            echo "ERROR: Unexpected plugin JAR found in the native Bedrock plugin directory." >&2
-            exit 1
-          fi
 
-      - name: Cache Bedrock world and plugin data
+      - name: Cache Bedrock world and player data
         uses: actions/cache@v4
         with:
           path: |
             server/bedrock_server/worlds
-            server/bedrock_server/plugins/lootlow_bedrock/data
             server/permissions.json
             server/allowlist.json
           key: bedrock-world-${{ github.run_id }}-${{ github.run_attempt }}
@@ -169,8 +163,7 @@ jobs:
 
           ready=false
           for ((second = 0; second < 240; second++)); do
-            if grep -Fq 'Server started.' "$server_log" \
-              && grep -Fq 'Native Bedrock utility and protection features enabled.' "$server_log"; then
+            if grep -Fq 'Server started.' "$server_log"; then
               ready=true
               break
             fi
@@ -194,7 +187,7 @@ jobs:
           if [[ "$ready" != true ]]; then
             tail -n 80 "$server_log" || true
             cat "$watchdog_log" frpc.log 2>/dev/null || true
-            echo "ERROR: Endstone did not report server and plugin readiness within 240 seconds." >&2
+            echo "ERROR: Endstone did not report server readiness within 240 seconds." >&2
             exit 1
           fi
           echo "Native Bedrock server is ready at ${FRP_SERVER_IP}:19132/UDP."

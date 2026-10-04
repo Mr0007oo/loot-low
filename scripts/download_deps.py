@@ -23,7 +23,6 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 SERVER_DIR = ROOT / "server"
 BDS_DIR = SERVER_DIR / "bedrock_server"
-PLUGINS_DIR = SERVER_DIR / "plugins"
 ENDSTONE_VERSION = "0.11.2"
 ENDSTONE_BDS_VERSION = "26.3"
 ENDSTONE_WHEEL_NAME = (
@@ -42,7 +41,7 @@ BDS_ARCHIVE_URL = (
 BDS_ARCHIVE_SHA256 = "1b03ac717d239d47a3f374dba673125d3f2a6a05968b5933f9e87affceb6b9c8"
 USER_AGENT = "loot-low-native-bedrock-downloader/1.0"
 RETRIES = 3
-PRESERVED_RUNTIME_PATHS = ("worlds", "plugins", "endstone.toml")
+PRESERVED_RUNTIME_PATHS = ("worlds", "endstone.toml")
 
 
 def request(url: str) -> urllib.request.urlopen:
@@ -269,12 +268,6 @@ def install_bds_archive(
 
 
 def remove_legacy_artifacts(server_dir: Path = SERVER_DIR) -> None:
-    plugin_dirs = (server_dir / "plugins", server_dir / "bedrock_server" / "plugins")
-    for plugins_dir in plugin_dirs:
-        plugins_dir.mkdir(parents=True, exist_ok=True)
-        for plugin_jar in plugins_dir.rglob("*.jar"):
-            plugin_jar.unlink()
-            print(f"Removed legacy plugin artifact: {plugin_jar.name}")
     for server_jar in server_dir.glob("*.jar"):
         server_jar.unlink()
         print(f"Removed legacy server artifact: {server_jar.name}")
@@ -299,7 +292,6 @@ def main() -> int:
         parser.error("BEDROCK_CLIENT_VERSION must remain 1.26.2")
 
     SERVER_DIR.mkdir(parents=True, exist_ok=True)
-    PLUGINS_DIR.mkdir(parents=True, exist_ok=True)
     try:
         if args.check:
             verify_bds_install(BDS_DIR)

@@ -15,17 +15,12 @@ if [[ ! -f "$wheel" ]]; then
     echo "ERROR: Pinned Endstone 0.11.2 runtime wheel is missing. Run scripts/download_deps.py first." >&2
     exit 1
 fi
-if [[ ! -f "$SERVER_DIR/plugins/lootlow_bedrock/pyproject.toml" ]]; then
-    echo "ERROR: Native Bedrock plugin package is missing." >&2
-    exit 1
-fi
-
 if [[ ! -x "$SERVER_DIR/.venv/bin/python" ]]; then
     python3.13 -m venv "$SERVER_DIR/.venv"
 fi
+"$SERVER_DIR/.venv/bin/python" -m pip uninstall --disable-pip-version-check --yes \
+    endstone-lootlow-bedrock
 "$SERVER_DIR/.venv/bin/python" -m pip install --disable-pip-version-check "$wheel"
-"$SERVER_DIR/.venv/bin/python" -m pip install --disable-pip-version-check \
-    "$SERVER_DIR/plugins/lootlow_bedrock"
 python3.13 "$ROOT_DIR/scripts/download_deps.py" --check
 
 runtime_version="$("$SERVER_DIR/.venv/bin/python" -c \

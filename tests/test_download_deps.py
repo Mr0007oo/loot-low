@@ -1,12 +1,10 @@
 from __future__ import annotations
 
-import ast
 import hashlib
 import os
 import subprocess
 import tempfile
 import time
-import tomllib
 import unittest
 import zipfile
 from pathlib import Path
@@ -15,46 +13,44 @@ from scripts import download_deps
 
 
 class BedrockRuntimeTests(unittest.TestCase):
-    def test_plugin_event_handlers_use_runtime_event_annotations(self) -> None:
-        plugin = (
-            Path(__file__).parents[1]
-            / "server"
-            / "plugins"
-            / "lootlow_bedrock"
-            / "src"
-            / "lootlow_bedrock"
-            / "plugin.py"
+    def test_server_uses_stable_plugin_free_bedrock_configuration(self) -> None:
+        root = Path(__file__).parents[1]
+        properties = {}
+        for line in (root / "server" / "server.properties").read_text(
+            encoding="utf-8"
+        ).splitlines():
+            line = line.strip()
+            if line and not line.startswith("#") and "=" in line:
+                key, value = line.split("=", 1)
+                properties[key.strip()] = value.strip()
+        self.assertEqual(
+            {
+                key: properties.get(key)
+                for key in (
+                    "server-port",
+                    "server-ip",
+                    "allow-outdated-client",
+                    "emit-server-telemetry",
+                )
+            },
+            {
+                "server-port": "19132",
+                "server-ip": "0.0.0.0",
+                "allow-outdated-client": "true",
+                "emit-server-telemetry": "false",
+            },
         )
-        module = ast.parse(plugin.read_text(encoding="utf-8"))
-        uses_postponed_annotations = any(
-            isinstance(node, ast.ImportFrom)
-            and node.module == "__future__"
-            and any(alias.name == "annotations" for alias in node.names)
-            for node in module.body
-        )
-        self.assertFalse(uses_postponed_annotations)
 
-        expected_handlers = {
-            "on_block_break": "BlockBreakEvent",
-            "on_block_place": "BlockPlaceEvent",
-            "on_player_interact": "PlayerInteractEvent",
-            "on_actor_explode": "ActorExplodeEvent",
-            "on_block_explode": "BlockExplodeEvent",
-        }
-        handlers = {
-            node.name: node
-            for node in ast.walk(module)
-            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-            and any(
-                isinstance(decorator, ast.Name) and decorator.id == "event_handler"
-                for decorator in node.decorator_list
-            )
-        }
-        self.assertEqual(set(handlers), set(expected_handlers))
-        for name, event_type in expected_handlers.items():
-            event_argument = handlers[name].args.args[1]
-            self.assertIsInstance(event_argument.annotation, ast.Name, name)
-            self.assertEqual(event_argument.annotation.id, event_type, name)
+        launcher = (root / "server" / "start.sh").read_text(encoding="utf-8")
+        self.assertIn("pip uninstall", launcher)
+        self.assertEqual(launcher.count("pip install"), 1)
+        self.assertIn('pip install --disable-pip-version-check "$wheel"', launcher)
+
+        workflow = (root / ".github" / "workflows" / "minecraft.yml").read_text(
+            encoding="utf-8"
+        )
+        self.assertNotIn("pip wheel", workflow)
+        self.assertNotIn("Native Bedrock utility and protection features enabled.", workflow)
 
     def make_archive(self, archive_path: Path, executable: bytes = b"pinned-bds") -> str:
         with zipfile.ZipFile(archive_path, "w") as archive:
@@ -71,6 +67,9 @@ class BedrockRuntimeTests(unittest.TestCase):
             (old_runtime / "obsolete-runtime-file").write_text("stale", encoding="utf-8")
             (old_runtime / "worlds").mkdir()
             (old_runtime / "worlds" / "level.dat").write_bytes(b"world")
+            old_plugin = old_runtime / "plugins" / "custom" / "plugin.py"
+            old_plugin.parent.mkdir(parents=True)
+            old_plugin.write_text("old plugin", encoding="utf-8")
             (server_dir / "allowlist.json").write_text("[]\n", encoding="utf-8")
             (server_dir / "server.properties").write_text(
                 "server-port=19132\n",
@@ -88,6 +87,7 @@ class BedrockRuntimeTests(unittest.TestCase):
             self.assertEqual(result, old_runtime)
             self.assertEqual((result / "bedrock_server").read_bytes(), b"pinned-bds")
             self.assertFalse((result / "obsolete-runtime-file").exists())
+            self.assertFalse((result / "plugins").exists())
             self.assertEqual((result / "worlds" / "level.dat").read_bytes(), b"world")
             self.assertEqual((result / "server.properties").read_text(), "server-port=19132\n")
             self.assertEqual((result / "allowlist.json").read_text(), "[]\n")
@@ -178,20 +178,6 @@ class BedrockRuntimeTests(unittest.TestCase):
         self.assertEqual(download_deps.ENDSTONE_BDS_VERSION, "26.3")
         self.assertIn("bedrock-server-1.26.3.1.zip", download_deps.BDS_ARCHIVE_URL)
         self.assertEqual(len(download_deps.BDS_ARCHIVE_SHA256), 64)
-        manifest = (
-            Path(__file__).parents[1]
-            / "server"
-            / "plugins"
-            / "lootlow_bedrock"
-            / "pyproject.toml"
-        )
-        project = tomllib.loads(manifest.read_text(encoding="utf-8"))["project"]
-        self.assertEqual(project["dependencies"], ["endstone==0.11.2"])
-        self.assertEqual(project["name"], "endstone-lootlow-bedrock")
-        self.assertEqual(
-            project["entry-points"]["endstone"]["lootlow-bedrock"],
-            "lootlow_bedrock:LootLowPlugin",
-        )
         launcher = (
             Path(__file__).parents[1] / "server" / "start.sh"
         ).read_text(encoding="utf-8")

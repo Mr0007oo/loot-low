@@ -224,6 +224,8 @@ class BedrockRuntimeTests(unittest.TestCase):
         self.assertIn('"pos2"', world_edit_source)
         self.assertIn('"fill"', world_edit_source)
         self.assertIn("claim_plugin.can_modify(", world_edit_source)
+        self.assertNotIn("from endstone.block import BlockType", world_edit_source)
+        self.assertIn(".set_type(block_id)", world_edit_source)
 
     def make_archive(self, archive_path: Path, executable: bytes = b"pinned-bds") -> str:
         with zipfile.ZipFile(archive_path, "w") as archive:

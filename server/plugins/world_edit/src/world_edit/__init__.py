@@ -2,7 +2,6 @@ import math
 import re
 
 from endstone import Player
-from endstone.block import BlockType
 from endstone.command import Command, CommandSender
 from endstone.plugin import Plugin
 
@@ -111,15 +110,6 @@ class WorldEditPlugin(Plugin):
         if not BLOCK_ID_PATTERN.fullmatch(block_id):
             player.send_message("Error: Enter a valid block identifier, such as stone or minecraft:stone.")
             return
-        try:
-            block_type = BlockType.get(block_id)
-        except (KeyError, ValueError):
-            player.send_message(f"Error: Unknown block type '{block_id}'.")
-            return
-        if block_type is None:
-            player.send_message(f"Error: Unknown block type '{block_id}'.")
-            return
-
         claim_plugin = self.server.plugin_manager.get_plugin("land_claims")
         if claim_plugin is None:
             self.logger.error("Land Claims is not available; refusing to run /fill.")
@@ -141,6 +131,6 @@ class WorldEditPlugin(Plugin):
         for x in range(min_x, max_x + 1):
             for y in range(min_y, max_y + 1):
                 for z in range(min_z, max_z + 1):
-                    dimension.get_block_at(x, y, z).set_type(block_type.id)
+                    dimension.get_block_at(x, y, z).set_type(block_id)
 
-        player.send_message(f"Filled {block_count} blocks with {block_type.id}.")
+        player.send_message(f"Filled {block_count} blocks with {block_id}.")

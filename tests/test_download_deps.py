@@ -5,6 +5,7 @@ import os
 import subprocess
 import tempfile
 import time
+import tomllib
 import unittest
 import zipfile
 from pathlib import Path
@@ -13,7 +14,7 @@ from scripts import download_deps
 
 
 class BedrockRuntimeTests(unittest.TestCase):
-    def test_server_uses_stable_plugin_free_bedrock_configuration(self) -> None:
+    def test_server_uses_stable_bedrock_configuration_and_server_utils_plugin(self) -> None:
         root = Path(__file__).parents[1]
         properties = {}
         for line in (root / "server" / "server.properties").read_text(
@@ -43,18 +44,54 @@ class BedrockRuntimeTests(unittest.TestCase):
 
         launcher = (root / "server" / "start.sh").read_text(encoding="utf-8")
         self.assertIn("pip uninstall", launcher)
-        self.assertEqual(launcher.count("pip install"), 1)
+        self.assertEqual(launcher.count("pip install"), 3)
         self.assertIn('pip install --disable-pip-version-check "$wheel"', launcher)
+        self.assertIn('"$SERVER_DIR/plugins/server_utils"', launcher)
+        self.assertIn('"$SERVER_DIR/plugins/fun_plugins"', launcher)
         self.assertIn("exec {server_stdin_fd}< <(tail -f /dev/null)", launcher)
         self.assertIn('--no-interactive <&"$server_stdin_fd" &', launcher)
         self.assertIn("close_server_stdin", launcher)
+
+        plugin_manifest = root / "server" / "plugins" / "server_utils" / "pyproject.toml"
+        project = tomllib.loads(plugin_manifest.read_text(encoding="utf-8"))["project"]
+        self.assertEqual(project["name"], "endstone-server-utils")
+        self.assertEqual(project["dependencies"], ["endstone==0.11.2"])
+        self.assertEqual(
+            project["entry-points"]["endstone"]["server-utils"],
+            "server_utils:ServerUtilsPlugin",
+        )
+        plugin_source = (
+            root / "server" / "plugins" / "server_utils" / "src" / "server_utils" / "__init__.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn('api_version = "0.11"', plugin_source)
+        self.assertIn('"serverinfo"', plugin_source)
+        self.assertNotIn("@event_handler", plugin_source)
 
         workflow = (root / ".github" / "workflows" / "minecraft.yml").read_text(
             encoding="utf-8"
         )
         self.assertIn("push:\n    branches: [main]", workflow)
-        self.assertNotIn("pip wheel", workflow)
-        self.assertNotIn("Native Bedrock utility and protection features enabled.", workflow)
+        self.assertIn("pip wheel", workflow)
+        self.assertIn("Server utilities enabled.", workflow)
+        self.assertIn("fun_plugins", workflow)
+        self.assertIn("Fun command utilities enabled.", workflow)
+
+        fun_manifest = root / "server" / "plugins" / "fun_plugins" / "pyproject.toml"
+        fun_project = tomllib.loads(fun_manifest.read_text(encoding="utf-8"))["project"]
+        self.assertEqual(fun_project["name"], "endstone-fun-plugins")
+        self.assertEqual(fun_project["dependencies"], ["endstone==0.11.2"])
+        self.assertEqual(
+            fun_project["entry-points"]["endstone"]["fun-plugins"],
+            "fun_plugins:FunPlugins",
+        )
+        fun_source = (
+            root / "server" / "plugins" / "fun_plugins" / "src" / "fun_plugins" / "__init__.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn('"coinflip"', fun_source)
+        self.assertIn('"roll"', fun_source)
+        self.assertIn('"magic8ball"', fun_source)
+        self.assertIn("ROLL_MAX_SIDES = 1_000", fun_source)
+        self.assertNotIn("@event_handler", fun_source)
 
     def make_archive(self, archive_path: Path, executable: bytes = b"pinned-bds") -> str:
         with zipfile.ZipFile(archive_path, "w") as archive:

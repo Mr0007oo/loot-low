@@ -5,6 +5,8 @@ server/bedrock_server/
 server/worlds/
 server/endstone-*.whl
 server/endstone-*.zip
+server/plugins/*/build/
+server/plugins/*/src/*.egg-info/
 server/world/
 server/world_nether/
 server/world_the_end/

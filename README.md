@@ -25,9 +25,21 @@ playability. The dependency setup purges the previous BDS runtime while
 preserving worlds and server access configuration, verifies the binary against
 Mojang's published archive digest, and checks Endstone's embedded target before
 the server process starts. CI uses Endstone's `--yes --no-interactive` options.
-Python 3.13 installs and launches Endstone. No custom Python or Java plugins
-are installed; the launcher removes the retired `endstone-lootlow-bedrock`
-distribution from an existing virtual environment before starting.
+Python 3.13 installs and launches Endstone, ServerUtils, and FunPlugins. The
+launcher removes the retired `endstone-lootlow-bedrock` distribution from an
+existing virtual environment before starting.
+
+## Server utilities
+
+The `endstone-server-utils` plugin provides `/serverinfo`, which displays the
+pinned Endstone and Bedrock runtime versions and the public UDP port. Its
+Endstone entry point is named `server-utils` to match the distribution name
+under Endstone's `endstone-<entry-point>` validation rule. It does not register
+event listeners.
+
+The `endstone-fun-plugins` package adds `/coinflip`, `/roll [sides]` (2-1000),
+and `/magic8ball <question>`. These commands are available to all players and
+do not register event listeners or perform world-wide operations.
 
 The server listens on UDP 19132, binds to `0.0.0.0`, allows supported outdated
 clients, and disables server telemetry in `server/server.properties`. The

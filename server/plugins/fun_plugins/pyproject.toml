@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "endstone-fun-plugins"
+version = "1.0.0"
+description = "Lightweight fun command utilities for Endstone"
+requires-python = ">=3.10"
+dependencies = ["endstone==0.11.2"]
+
+[project.entry-points."endstone"]
+fun-plugins = "fun_plugins:FunPlugins"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]

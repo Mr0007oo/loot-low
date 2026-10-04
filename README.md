@@ -49,16 +49,24 @@ per player. It traverses only face-adjacent blocks and does not delete or reset
 world directories or server configuration. Bonus ore drops use basic drop
 amounts and do not simulate tool enchantments or durability use.
 
-The `endstone-container-plugins` package adds `/ec` to display the caller's
-Ender Chest contents and `/backpack` for a 27-slot, in-memory portable bag.
-Use `/backpack store <inventory_slot> <bag_slot>` and
-`/backpack take <bag_slot>` to move items; backpacks do not persist across
+The `endstone-container-plugins` package adds `/ec`, which opens a Bedrock
+ActionForm menu for remotely depositing and withdrawing items from the
+caller's `player.ender_chest` without visiting a physical Ender Chest. The menu
+moves stacks into empty slots and preserves items if the player's inventory is
+full. `/ec store <inventory_slot> <ender_slot>` and `/ec take <ender_slot>` are
+also available as command alternatives. `/backpack` provides a 27-slot,
+in-memory portable bag; use `/backpack store <inventory_slot> <bag_slot>` and
+`/backpack take <bag_slot>` to move items. Backpacks do not persist across
 server restarts.
 
 The `endstone-land-claims` package adds `/claim`, `/unclaim`, `/trust <player>`,
 and `/untrust <player>`. Claims cover the current 16-by-16 chunk and are saved
 as JSON in the plugin's data folder. Block breaking and placement are denied in
-another player's claim unless the actor is trusted there.
+another player's claim unless the actor is trusted there. Right-click while
+holding a Golden Stick (`golden_rod`) or a stick named `Claim Wand` to claim
+your current chunk; sneak-right-click with the same item to unclaim it.
+Right-clicking another player's chest, barrel, shulker box, furnace, or other
+supported container in a claimed chunk is cancelled unless you are trusted.
 
 The `endstone-world-edit` package adds `/pos1`, `/pos2`, and `/fill <block_type>`.
 Fills are capped at 512 blocks and pre-check every affected claim before

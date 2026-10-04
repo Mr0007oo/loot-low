@@ -9,6 +9,7 @@ from endstone.event import (
     BlockBreakEvent,
     BlockPlaceEvent,
     EventPriority,
+    PlayerInteractEvent,
     event_handler,
 )
 from endstone.plugin import Plugin
@@ -17,6 +18,24 @@ from endstone.plugin import Plugin
 class Claim(TypedDict):
     owner: str
     trusted: list[str]
+
+
+CONTAINER_BLOCKS = {
+    "barrel",
+    "beehive",
+    "bee_nest",
+    "blast_furnace",
+    "brewing_stand",
+    "chest",
+    "crafter",
+    "dispenser",
+    "dropper",
+    "furnace",
+    "hopper",
+    "shulker_box",
+    "smoker",
+    "trapped_chest",
+}
 
 
 class LandClaimsPlugin(Plugin):
@@ -62,7 +81,10 @@ class LandClaimsPlugin(Plugin):
         self.claims_path.parent.mkdir(parents=True, exist_ok=True)
         self.claims = self._load_claims()
         self.register_events(self)
-        self.logger.info(f"Land Claims enabled ({len(self.claims)} chunk claims loaded).")
+        self.logger.info(
+            f"Land Claims enabled ({len(self.claims)} chunk claims loaded; "
+            "use a Golden Stick or Claim Wand to claim)."
+        )
 
     def on_command(self, sender: CommandSender, command: Command, args: list[str]) -> bool:
         if command.name not in ("claim", "unclaim", "trust", "untrust"):
@@ -96,7 +118,7 @@ class LandClaimsPlugin(Plugin):
         candidate = dict(self.claims)
         candidate[key] = {"owner": owner_id, "trusted": []}
         if self._save_claims(player, candidate):
-            player.send_message("Chunk claimed.")
+            player.send_message("Chunk claimed successfully.")
 
     def _unclaim(self, player: Player, key: str, args: list[str]) -> None:
         if args:
@@ -110,7 +132,7 @@ class LandClaimsPlugin(Plugin):
         candidate = dict(self.claims)
         del candidate[key]
         if self._save_claims(player, candidate):
-            player.send_message("Chunk unclaimed.")
+            player.send_message("Chunk unclaimed successfully.")
 
     def _change_trust(
         self,
@@ -176,6 +198,41 @@ class LandClaimsPlugin(Plugin):
     def on_block_place(self, event: BlockPlaceEvent) -> None:
         self._protect_block(event, event.player)
 
+    @event_handler(priority=EventPriority.HIGHEST, ignore_cancelled=True)
+    def on_player_interact(self, event: PlayerInteractEvent) -> None:
+        if event.action not in (
+            PlayerInteractEvent.RIGHT_CLICK_BLOCK,
+            PlayerInteractEvent.RIGHT_CLICK_AIR,
+        ):
+            return
+
+        player = event.player
+        if self._is_claim_wand(event):
+            location = player.location
+            key = self._claim_key(location.dimension.name, location.x, location.z)
+            if player.is_sneaking:
+                self._unclaim(player, key, [])
+            else:
+                self._claim(player, key, [])
+            event.cancelled = True
+            return
+
+        if not event.has_block:
+            return
+        block = event.block
+        if not self._is_container(block.type):
+            return
+        if self.can_modify(
+            str(player.unique_id),
+            block.dimension.name,
+            block.x,
+            block.z,
+        ):
+            return
+
+        event.cancelled = True
+        player.send_message("Error: This container is in another player's claimed chunk.")
+
     def _protect_block(self, event: BlockBreakEvent | BlockPlaceEvent, player: Player) -> None:
         block = event.block
         if self.can_modify(
@@ -187,6 +244,27 @@ class LandClaimsPlugin(Plugin):
             return
         event.cancelled = True
         player.send_message("Error: This chunk is claimed by another player.")
+
+    @staticmethod
+    def _is_claim_wand(event: PlayerInteractEvent) -> bool:
+        if not event.has_item or event.item is None:
+            return False
+        item = event.item
+        item_id = item.type.id.removeprefix("minecraft:")
+        if item_id == "golden_rod":
+            return True
+        if item_id != "stick":
+            return False
+        meta = item.item_meta
+        return meta.has_display_name and meta.display_name.strip().casefold() == "claim wand"
+
+    @staticmethod
+    def _is_container(block_type: str) -> bool:
+        block_id = block_type.removeprefix("minecraft:")
+        return (
+            block_id in CONTAINER_BLOCKS
+            or block_id.endswith("_shulker_box")
+        )
 
     def _load_claims(self) -> dict[str, Claim]:
         if not self.claims_path.exists():

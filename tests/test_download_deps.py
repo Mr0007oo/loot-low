@@ -181,6 +181,21 @@ class BedrockRuntimeTests(unittest.TestCase):
         self.assertIn('"ec"', containers_source)
         self.assertIn('"backpack"', containers_source)
         self.assertIn("sender.ender_chest", containers_source)
+        self.assertIn("from endstone.form import ActionForm", containers_source)
+        self.assertIn("player.send_form(", containers_source)
+        self.assertIn('"Withdraw an item"', containers_source)
+        self.assertIn('"Deposit an item"', containers_source)
+        self.assertIn("def _withdraw_slot(", containers_source)
+        self.assertIn("def _deposit_slot(", containers_source)
+        self.assertIn(
+            'self._store_item(sender, args[1:], sender.ender_chest, "Ender Chest", "ender")',
+            containers_source,
+        )
+        self.assertIn(
+            'self._take_item(sender, args[1:], sender.ender_chest, "Ender Chest", "ender")',
+            containers_source,
+        )
+        self.assertIn("/ec store <inventory_slot> <ender_slot>", containers_source)
         self.assertIn("BACKPACK_SIZE = 27", containers_source)
         self.assertIn("self.backpacks:", containers_source)
 
@@ -192,6 +207,13 @@ class BedrockRuntimeTests(unittest.TestCase):
         self.assertIn("event.cancelled = True", claims_source)
         self.assertIn("claims.json", claims_source)
         self.assertIn("def can_modify(", claims_source)
+        self.assertIn("PlayerInteractEvent", claims_source)
+        self.assertIn("def _is_claim_wand(", claims_source)
+        self.assertIn('"golden_rod"', claims_source)
+        self.assertIn('"claim wand"', claims_source)
+        self.assertIn("player.is_sneaking", claims_source)
+        self.assertIn("def _is_container(", claims_source)
+        self.assertIn("block.dimension.name", claims_source)
 
         world_edit_source = (
             root / "server" / "plugins" / "world_edit" / "src" / "world_edit" / "__init__.py"

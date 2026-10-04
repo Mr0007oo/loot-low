@@ -147,7 +147,7 @@ class BedrockRuntimeTests(unittest.TestCase):
         self.assertEqual(project["dependencies"], ["endstone==0.11.2"])
         self.assertEqual(project["name"], "endstone-lootlow-bedrock")
         self.assertEqual(
-            project["entry-points"]["endstone"]["endstone-lootlow-bedrock"],
+            project["entry-points"]["endstone"]["lootlow-bedrock"],
             "lootlow_bedrock:LootLowPlugin",
         )
         launcher = (

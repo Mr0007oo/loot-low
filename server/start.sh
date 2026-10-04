@@ -1,45 +1,39 @@
 #!/usr/bin/env bash
-set -uo pipefail
+set -euo pipefail
 
-cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")"
+SERVER_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
+cd "$SERVER_DIR"
 
-if ! command -v java >/dev/null 2>&1; then
-    echo "ERROR: Java is not installed or is not on PATH." >&2
+if ! command -v python3.13 >/dev/null 2>&1; then
+    echo "ERROR: Python 3.13 is required by the Endstone Linux release." >&2
     exit 1
 fi
 
-java_version=$(java -version 2>&1)
-java_major=$(printf '%s\n' "$java_version" | sed -nE 's/.*version "([0-9]+).*/\1/p' | head -n 1)
-if [[ "$java_major" != "21" ]]; then
-    echo "ERROR: Java 21 is required; found: ${java_version%%$'\n'*}" >&2
+wheel=""
+while IFS= read -r candidate; do
+    wheel="$candidate"
+    break
+done < <(find "$SERVER_DIR" -maxdepth 1 -type f -name 'endstone-*-cp313-cp313-manylinux*_x86_64.whl' -print)
+if [[ -z "$wheel" ]]; then
+    echo "ERROR: Endstone runtime wheel is missing. Run scripts/download_deps.py first." >&2
+    exit 1
+fi
+if [[ ! -f "$SERVER_DIR/plugins/lootlow_bedrock/pyproject.toml" ]]; then
+    echo "ERROR: Native Bedrock plugin package is missing." >&2
     exit 1
 fi
 
-if [[ ! -s paper.jar ]]; then
-    echo "ERROR: server/paper.jar is missing or empty. Run scripts/download_deps.py first." >&2
-    exit 1
+if [[ ! -x "$SERVER_DIR/.venv/bin/python" ]]; then
+    python3.13 -m venv "$SERVER_DIR/.venv"
 fi
-
-if [[ -z "${RCON_PASSWORD:-}" ]]; then
-    echo "ERROR: RCON_PASSWORD is required; refusing to start without RCON authentication." >&2
-    exit 1
-fi
-if [[ "$RCON_PASSWORD" == *$'\n'* ]]; then
-    echo "ERROR: RCON_PASSWORD must not contain newlines." >&2
-    exit 1
-fi
-
-escaped_rcon_password=${RCON_PASSWORD//\\/\\\\}
-escaped_rcon_password=${escaped_rcon_password//&/\\&}
-escaped_rcon_password=${escaped_rcon_password//|/\\|}
-sed -i "s|^rcon.password=.*|rcon.password=${escaped_rcon_password}|" server.properties
-
-printf 'eula=true\n' > eula.txt
+"$SERVER_DIR/.venv/bin/python" -m pip install --disable-pip-version-check "$wheel"
+"$SERVER_DIR/.venv/bin/python" -m pip install --disable-pip-version-check \
+    "$SERVER_DIR/plugins/lootlow_bedrock"
 
 server_pid=""
 stop_server() {
     if [[ -n "$server_pid" ]] && kill -0 "$server_pid" 2>/dev/null; then
-        echo "[$(date -Is)] Shutdown requested; forwarding SIGTERM to Paper."
+        echo "[$(date -Is)] Shutdown requested; forwarding SIGTERM to Endstone."
         kill -TERM "$server_pid" 2>/dev/null || true
         wait "$server_pid" 2>/dev/null || true
     fi
@@ -50,28 +44,9 @@ trap stop_server INT TERM
 restart_count=0
 max_restarts=3
 while true; do
-    echo "[$(date -Is)] Starting Paper 1.21.1 (restart ${restart_count}/${max_restarts})."
-    java -Xms4000M -Xmx5120M \
-        -XX:+UseG1GC \
-        -XX:+ParallelRefProcEnabled \
-        -XX:MaxGCPauseMillis=200 \
-        -XX:+UnlockExperimentalVMOptions \
-        -XX:+DisableExplicitGC \
-        -XX:+AlwaysPreTouch \
-        -XX:G1NewSizePercent=30 \
-        -XX:G1MaxNewSizePercent=40 \
-        -XX:G1HeapRegionSize=8M \
-        -XX:G1ReservePercent=15 \
-        -XX:G1HeapWastePercent=5 \
-        -XX:G1MixedGCCountTarget=4 \
-        -XX:InitiatingHeapOccupancyPercent=15 \
-        -XX:G1MixedGCLiveThresholdPercent=90 \
-        -XX:G1RSetUpdatingPauseTimePercent=5 \
-        -XX:SurvivorRatio=8 \
-        -XX:+UseStringDeduplication \
-        -jar paper.jar --nogui &
+    echo "[$(date -Is)] Starting native Bedrock server with Endstone ${wheel##*/} (restart ${restart_count}/${max_restarts})."
+    "$SERVER_DIR/.venv/bin/python" -m endstone -i &
     server_pid=$!
-
     if wait "$server_pid"; then
         exit_code=0
     else
@@ -80,16 +55,15 @@ while true; do
     server_pid=""
 
     if [[ "$exit_code" -eq 0 ]]; then
-        echo "[$(date -Is)] Paper stopped cleanly."
+        echo "[$(date -Is)] Endstone stopped cleanly."
         exit 0
     fi
 
-    echo "[$(date -Is)] Paper crashed with exit code ${exit_code}." >&2
+    echo "[$(date -Is)] Endstone exited with code ${exit_code}." >&2
     if [[ "$restart_count" -ge "$max_restarts" ]]; then
         echo "[$(date -Is)] Restart limit (${max_restarts}) reached; exiting." >&2
         exit "$exit_code"
     fi
-
     restart_count=$((restart_count + 1))
     echo "[$(date -Is)] Restarting in 5 seconds (${restart_count}/${max_restarts})." >&2
     sleep 5

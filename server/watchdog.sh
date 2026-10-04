@@ -9,10 +9,6 @@ SERVER_LAUNCHER="${SERVER_LAUNCHER:-$SERVER_DIR/start.sh}"
 FRPC_LOG="${FRPC_LOG:-$ROOT_DIR/frpc.log}"
 SERVER_LOG="${SERVER_LOG:-$SERVER_DIR/logs/server-session.log}"
 WATCHDOG_LOG="${WATCHDOG_LOG:-$SERVER_DIR/logs/watchdog-health.log}"
-PYTHON_BIN="${PYTHON_BIN:-$ROOT_DIR/.venv/bin/python}"
-if [[ ! -x "$PYTHON_BIN" ]]; then
-    PYTHON_BIN="$(command -v python3)"
-fi
 POLL_INTERVAL_SECONDS="${WATCHDOG_INTERVAL_SECONDS:-30}"
 SERVER_PID=""
 FRPC_PID="${FRPC_PID:-}"
@@ -32,14 +28,9 @@ stop_process() {
 cleanup() {
     local exit_status=$?
     trap - EXIT INT TERM
-    if [[ -n "$SERVER_PID" ]] && kill -0 "$SERVER_PID" 2>/dev/null; then
-        log "Final RCON save and world push before server shutdown."
-        "$PYTHON_BIN" "$ROOT_DIR/scripts/persist_world.py" || log "ERROR: pre-shutdown world save/push failed."
-        stop_process "$SERVER_PID"
-    fi
     if [[ -n "$SERVER_PID" ]]; then
-        log "Pushing final world files after Paper shutdown."
-        "$PYTHON_BIN" "$ROOT_DIR/scripts/persist_world.py" --skip-rcon || log "ERROR: final world push failed."
+        log "Stopping native Bedrock server gracefully."
+        stop_process "$SERVER_PID"
     fi
     stop_process "$FRPC_PID"
     exit "$exit_status"
@@ -61,7 +52,7 @@ if [[ ! -s "$FRPC_CONFIG" ]]; then
     exit 1
 fi
 if [[ ! -x "$SERVER_LAUNCHER" ]]; then
-    echo "ERROR: Server launcher is missing or not executable: $SERVER_LAUNCHER" >&2
+    echo "ERROR: Endstone launcher is missing or not executable: $SERVER_LAUNCHER" >&2
     exit 1
 fi
 if [[ ! "$POLL_INTERVAL_SECONDS" =~ ^[1-9][0-9]*$ ]]; then
@@ -71,22 +62,11 @@ fi
 
 mkdir -p "$SERVER_DIR/logs"
 
-notify_frp() {
-    local address="$1"
-    if [[ -n "${TELEGRAM_BOT_TOKEN:-}" && -n "${TELEGRAM_CHAT_ID:-}" ]]; then
-        curl --silent --show-error --fail --max-time 15 --request POST \
-            "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
-            --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}" \
-            --data-urlencode "text=FRP Minecraft tunnels restored. Java TCP: ${address}:25565; Bedrock UDP: ${address}:19132; Simple Voice Chat UDP: ${address}:24454" \
-            >/dev/null || log "WARNING: Telegram endpoint update failed."
-    fi
-}
-
 start_frpc() {
     : >"$FRPC_LOG"
     "$FRPC_BIN" -c "$FRPC_CONFIG" >>"$FRPC_LOG" 2>&1 &
     FRPC_PID=$!
-    log "Started frpc using $FRPC_CONFIG (pid=$FRPC_PID)."
+    log "Started frpc with the Bedrock UDP proxy (pid=$FRPC_PID)."
     sleep 5
     if ! kill -0 "$FRPC_PID" 2>/dev/null; then
         cat "$FRPC_LOG" || true
@@ -98,17 +78,7 @@ start_frpc() {
 start_server() {
     "$SERVER_LAUNCHER" >>"$SERVER_LOG" 2>&1 &
     SERVER_PID=$!
-    log "Started Paper supervisor (pid=$SERVER_PID)."
-}
-
-log_usage() {
-    local java_pid java_usage server_children frpc_usage host_memory
-    java_pid=$(pgrep -f '[j]ava.*-jar paper[.]jar' | head -n 1 || true)
-    java_usage=$(ps --no-headers -o %cpu=,rss= -p "${java_pid:-}" 2>/dev/null | tr -d '\n' || true)
-    server_children=$(ps --no-headers -o pid=,comm=,%cpu=,rss= --ppid "$SERVER_PID" 2>/dev/null | tr '\n' ';' || true)
-    frpc_usage=$(ps --no-headers -o %cpu=,rss= -p "$FRPC_PID" 2>/dev/null | tr -d '\n' || true)
-    host_memory=$(free -m 2>/dev/null | awk '/^Mem:/ { printf "used=%sMiB available=%sMiB", $3, $7 }' || true)
-    log "Health sample: paper_pid=\"${java_pid:-not-running}\" paper_cpu_rss=\"${java_usage:-unavailable}\" server_children=\"${server_children:-none}\" frpc_cpu_rss=\"${frpc_usage:-unavailable}\" memory=\"${host_memory:-unavailable}\""
+    log "Started Endstone supervisor (pid=$SERVER_PID)."
 }
 
 if [[ -z "$FRPC_PID" ]]; then
@@ -119,12 +89,11 @@ if ! kill -0 "$FRPC_PID" 2>/dev/null; then
     log "ERROR: frpc is not running."
     exit 1
 fi
-log "FRP TCP/UDP proxies are active for Java ${FRP_SERVER_IP}:25565, Bedrock ${FRP_SERVER_IP}:19132, and Simple Voice Chat ${FRP_SERVER_IP}:24454."
+log "FRP Bedrock UDP proxy is active at ${FRP_SERVER_IP}:19132."
 start_server
 
 while true; do
     sleep "$POLL_INTERVAL_SECONDS" || true
-    log_usage
 
     if ! kill -0 "$FRPC_PID" 2>/dev/null; then
         cat "$FRPC_LOG" || true
@@ -133,13 +102,11 @@ while true; do
         else
             frpc_status=$?
         fi
-        log "frpc exited with status $frpc_status; restarting from config."
+        log "frpc exited with status $frpc_status; restoring the UDP proxy."
         if ! start_frpc; then
             log "ERROR: frpc recovery failed."
             exit 1
         fi
-        log "FRP proxies restored from config."
-        notify_frp "$FRP_SERVER_IP"
     fi
 
     if ! kill -0 "$SERVER_PID" 2>/dev/null; then
@@ -149,10 +116,10 @@ while true; do
             server_status=$?
         fi
         if [[ "$server_status" -eq 0 ]]; then
-            log "Paper stopped cleanly; watchdog exiting."
+            log "Endstone stopped cleanly; watchdog exiting."
             exit 0
         fi
-        log "Paper supervisor exited with status $server_status (possible crash/OOM); restarting it."
+        log "Endstone supervisor exited with status $server_status; restarting it."
         start_server
     fi
 done

@@ -1,19 +1,70 @@
-# loot-low
+# loot-low Bedrock Server
 
-## Server endpoints
+This repository runs a native Minecraft Bedrock Dedicated Server through
+[Endstone](https://github.com/EndstoneMC/endstone). It has no Java server,
+protocol translator, Java plugin, or Java client endpoint. Bedrock traffic is
+forwarded directly over UDP.
+
+## Server endpoint
 
 | Service | Public port | Protocol |
 | --- | ---: | --- |
-| Minecraft Java | 25565 | TCP |
 | Minecraft Bedrock | 19132 | UDP |
-| Simple Voice Chat | 24454 | UDP |
 
-FRP forwards all three endpoints. The FRP host firewall and provider network rules must allow UDP 19132 and 24454. Simple Voice Chat is installed as the Paper 1.21.1 Bukkit plugin; Java players need the matching Simple Voice Chat client mod. Bedrock clients can join through Geyser but cannot use Simple Voice Chat natively.
+Configure the FRP host firewall and provider network rules to allow UDP 19132.
+The workflow requires the `FRP_SERVER_IP` and `FRP_TOKEN` repository secrets.
+Set the optional `ENDSTONE_VERSION` repository variable to pin an Endstone
+release; when unset, the downloader uses the latest stable Linux x86_64 release
+and verifies its GitHub-published SHA-256 digest. `BEDROCK_CLIENT_VERSION`
+defaults to `1.26.2` and can be set to the client version the deployment should
+accept.
 
-Java players with the Simple Voice Chat client mod can open its in-game controls with the default `V` key. The client GUI provides microphone and voice-output controls, per-player volume, mute/deafen, and group controls; each player configures their own microphone and output device. The server plugin alone does not add these controls to an unmodded client.
+The Bedrock server uses Xbox Live authentication (`online-mode=true`). Its
+`allow-outdated-client` setting permits older compatible clients, but clients
+must still use a protocol accepted by the selected Endstone/BDS release. The
+downloader reports the release's declared Bedrock version and warns when it
+differs from the requested client version; the older-client setting is not a
+substitute for confirming the handshake with a real 1.26.2 client.
+Endstone bundles its own native Bedrock Dedicated Server runtime; Python 3.13
+is used to install and launch that runtime and the in-repository plugin.
 
-Player chat is enabled by default; Minecraft has no `enable-chat` key in `server.properties`. This server uses `online-mode=false` for offline/cracked Java access, `enforce-secure-profile=false`, and ViaVersion's `enforce-secure-chat=false` fallback. Geyser's `auth-type: floodgate` translates Bedrock chat through Floodgate; no extra chat toggle is required.
+## Native plugin features
 
-Players can request a teleport with `/tpa <player>`. The target accepts with `/tpaccept` or refuses with `/tpdeny`. At startup the workflow grants those EssentialsX permissions to LuckPerms' `default` group, so they are available to ordinary players without operator access.
+The Endstone plugin in `server/plugins/lootlow_bedrock/` provides:
 
-Geyser-Spigot is pinned to 2.11.2 build 1235, the latest stable build verified to include `bedrock/runtime_item_states.26_20.json`; newer Geyser builds may drop support for that Bedrock protocol. Floodgate-Spigot is pinned to 2.2.5 build 141. ViaVersion, ViaBackwards, and ViaRewind are fetched from their latest stable GitHub releases, with superseded protocol JARs removed after successful downloads. The workflow caches `server/plugins/` so generated plugin settings and Floodgate keys survive between runs.
+- `/sethome [name]` and `/home [name]` for personal homes.
+- `/setwarp <name>` and `/warp [name]` for operator-managed server warps.
+- `/claim` and `/unclaim` for one 17-by-17 area per player, protecting blocks,
+  block interactions, and explosion damage.
+- `/enderchest` for a Bedrock form-based view of the player's native Ender
+  Chest, with item transfers to and from the player's inventory.
+- `/backpack` for a persistent 27-slot personal backpack. Item type, count,
+  and Bedrock item data are stored; custom item metadata is not supported.
+- `/worldedit pos1`, `/worldedit pos2`, and `/worldedit set <block>` (also
+  `/bedrockedit` or `/we`) for operator-only cuboid edits, capped at 32,768
+  blocks. The selection corners use the player's current block positions and
+  edits are applied in small batches to avoid long server ticks.
+
+Homes, warps, claims, and backpack data are stored in
+`server/plugins/lootlow_bedrock/data/` and persisted by the workflow.
+
+## Health display
+
+The former TAB plugin fabricated a below-name value with `%health%` and a heart
+glyph, which produced raw health numbers and a stray icon for Bedrock players.
+That Java overlay has been removed. The Endstone plugin now registers a native
+scoreboard objective with the `HEARTS` render type in the `BELOW_NAME` display
+slot and updates it once per second from each player's health.
+
+## World data
+
+The new server stores worlds in `server/worlds/` using Bedrock's native format.
+Existing Java Anvil worlds in `server/world`, `server/world_nether`, and
+`server/world_the_end` are left untouched as repository data, but are not
+loaded by the Bedrock server and are not automatically converted. Back up or
+convert any world you want to keep before using a Bedrock-compatible world
+converter.
+
+The workflow restores cached Bedrock world/plugin data and commits it back to
+the current branch after the server stops. The Endstone runtime and generated
+virtual environment are downloaded on demand and are not committed.

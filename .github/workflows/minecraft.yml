@@ -1,4 +1,4 @@
-name: Minecraft Server
+name: Native Bedrock Server
 
 on:
   workflow_dispatch:
@@ -23,58 +23,50 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
-
-      - name: Set up Java 21
-        uses: actions/setup-java@v4
         with:
-          distribution: temurin
-          java-version: '21'
+          fetch-depth: 0
 
-      - name: Set up Python and bot dependencies
-        id: setup-python
+      - name: Set up Python 3.13
         uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: '3.13'
 
-      - name: Cache Python virtual environment
-        uses: actions/cache@v4
-        with:
-          path: .venv
-          key: ${{ runner.os }}-python-venv-${{ steps.setup-python.outputs.python-version }}-${{ hashFiles('requirements.txt') }}
-
-      - name: Install Telegram and RCON packages
+      - name: Validate native server code and configuration
         run: |
-          if [[ ! -x .venv/bin/python ]]; then
-            python3 -m venv .venv
+          python3 -m compileall -q scripts server/plugins/lootlow_bedrock/src
+          bash -n server/start.sh server/watchdog.sh
+          python3 -m json.tool server/permissions.json >/dev/null
+          python3 -m json.tool server/allowlist.json >/dev/null
+          python3 -m pip wheel --disable-pip-version-check --no-deps \
+            --wheel-dir "$RUNNER_TEMP" server/plugins/lootlow_bedrock
+          if find server/plugins -type f -name '*.jar' -print -quit | grep -q .; then
+            echo "ERROR: Unexpected plugin JAR found in the native Bedrock plugin directory." >&2
+            exit 1
           fi
-          .venv/bin/python -m pip install --disable-pip-version-check --upgrade pip
-          .venv/bin/python -m pip install --disable-pip-version-check -r requirements.txt
 
-      - name: Verify runtime system tools
-        run: |
-          for tool in java git curl sed tar; do
-            command -v "$tool" >/dev/null || { echo "Missing required system tool: $tool" >&2; exit 1; }
-          done
-
-      - name: Restore and save world and plugin data
+      - name: Cache Bedrock world and plugin data
         uses: actions/cache@v4
         with:
           path: |
-            server/world
-            server/world_nether
-            server/world_the_end
-            server/plugins
-          key: minecraft-world-${{ github.run_id }}-${{ github.run_attempt }}
-          restore-keys: minecraft-world-
+            server/worlds
+            server/permissions.json
+            server/allowlist.json
+            server/plugins/lootlow_bedrock/data
+          key: bedrock-world-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: bedrock-world-
 
-      - name: Download and validate Paper and plugins
+      - name: Download and validate Endstone
         env:
-          GEYSER_VERSION: ${{ vars.GEYSER_VERSION || '2.11.2' }}
-          GEYSER_BUILD: ${{ vars.GEYSER_BUILD || '1235' }}
-          GEYSER_BEDROCK_PROTOCOL: ${{ vars.GEYSER_BEDROCK_PROTOCOL || '26_20' }}
-          FLOODGATE_VERSION: ${{ vars.FLOODGATE_VERSION || '2.2.5' }}
-          FLOODGATE_BUILD: ${{ vars.FLOODGATE_BUILD || '141' }}
+          ENDSTONE_VERSION: ${{ vars.ENDSTONE_VERSION }}
+          BEDROCK_CLIENT_VERSION: ${{ vars.BEDROCK_CLIENT_VERSION || '1.26.2' }}
         run: python3 scripts/download_deps.py
+
+      - name: Assert native-only server artifacts
+        run: |
+          if find server -type f -name '*.jar' -print -quit | grep -q .; then
+            echo "ERROR: Java archive found after native dependency setup." >&2
+            exit 1
+          fi
 
       - name: Download and validate FRP client
         shell: bash
@@ -103,63 +95,27 @@ jobs:
           chmod +x ./frpc
           ./frpc verify -c frpc.toml
 
-      - name: Send boot notification
-        env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: |
-          if [[ -z "$TELEGRAM_BOT_TOKEN" || -z "$TELEGRAM_CHAT_ID" ]]; then
-            echo "Telegram secrets are not configured; skipping boot notification."
-            exit 0
-          fi
-          curl --silent --show-error --fail --max-time 15 --request POST \
-            "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
-            --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}" \
-            --data-urlencode "text=Booting Minecraft server for Mr0007oo/loot-low with Java 21." \
-            >/dev/null || echo "WARNING: Telegram boot notification failed."
-
-      - name: Start FRP and Paper
+      - name: Start FRP and native Bedrock server
         id: run-server
-        env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          RCON_PASSWORD: ${{ secrets.RCON_PASSWORD }}
+        timeout-minutes: 330
         shell: bash
         run: |
           set -uo pipefail
           mkdir -p server/logs
           server_log="server/logs/server-session.log"
           : >"$server_log"
-          TELEGRAM_BOT_PID=""
-          AUTO_SAVE_PID=""
-          WATCHDOG_PID=""
-          LOG_TAIL_PID=""
           tail -n 0 -F "$server_log" &
           LOG_TAIL_PID=$!
 
-          notify() {
-            local message="$1"
-            if [[ -n "$TELEGRAM_BOT_TOKEN" && -n "$TELEGRAM_CHAT_ID" ]]; then
-              curl --silent --show-error --fail --max-time 15 --request POST \
-                "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
-                --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}" \
-                --data-urlencode "text=${message}" >/dev/null || echo "WARNING: Telegram notification failed."
-            fi
-          }
-
           cleanup() {
             trap - EXIT INT TERM
-            if [[ -n "${TELEGRAM_BOT_PID:-}" ]] && kill -0 "$TELEGRAM_BOT_PID" 2>/dev/null; then
-              kill -TERM "$TELEGRAM_BOT_PID" 2>/dev/null || true
-              wait "$TELEGRAM_BOT_PID" 2>/dev/null || true
-            fi
-            if [[ -n "${AUTO_SAVE_PID:-}" ]] && kill -0 "$AUTO_SAVE_PID" 2>/dev/null; then
-              kill -TERM "$AUTO_SAVE_PID" 2>/dev/null || true
-              wait "$AUTO_SAVE_PID" 2>/dev/null || true
-            fi
             if [[ -n "${WATCHDOG_PID:-}" ]] && kill -0 "$WATCHDOG_PID" 2>/dev/null; then
               kill -TERM "$WATCHDOG_PID" 2>/dev/null || true
               wait "$WATCHDOG_PID" 2>/dev/null || true
+            fi
+            if [[ -n "${FRPC_PID:-}" ]] && kill -0 "$FRPC_PID" 2>/dev/null; then
+              kill -TERM "$FRPC_PID" 2>/dev/null || true
+              wait "$FRPC_PID" 2>/dev/null || true
             fi
             if [[ -n "${LOG_TAIL_PID:-}" ]] && kill -0 "$LOG_TAIL_PID" 2>/dev/null; then
               kill -TERM "$LOG_TAIL_PID" 2>/dev/null || true
@@ -169,9 +125,6 @@ jobs:
           trap cleanup EXIT
           trap 'exit 143' INT TERM
 
-          ./scripts/auto_save.sh >server/logs/auto-save-loop.log 2>&1 &
-          AUTO_SAVE_PID=$!
-
           ./frpc -c frpc.toml >frpc.log 2>&1 &
           FRPC_PID=$!
           sleep 5
@@ -180,28 +133,16 @@ jobs:
             echo "ERROR: frpc exited during startup." >&2
             exit 1
           fi
-          java_address="${FRP_SERVER_IP}:25565"
-          bedrock_address="${FRP_SERVER_IP}:19132/UDP"
-          voice_chat_address="${FRP_SERVER_IP}:24454/UDP"
-          echo "FRP Java tunnel: ${java_address}"
-          echo "FRP Bedrock tunnel: ${bedrock_address}"
-          echo "FRP Simple Voice Chat tunnel: ${voice_chat_address}"
-          notify "Minecraft Java TCP: ${java_address}; Bedrock UDP: ${bedrock_address}; Simple Voice Chat UDP: ${voice_chat_address}"
+          echo "Native Minecraft Bedrock UDP endpoint: ${FRP_SERVER_IP}:19132"
           export FRPC_PID FRPC_BIN="$PWD/frpc" FRPC_CONFIG="$PWD/frpc.toml" FRPC_LOG="$PWD/frpc.log"
-
-          if [[ -n "$TELEGRAM_BOT_TOKEN" && -n "$TELEGRAM_CHAT_ID" ]]; then
-            .venv/bin/python scripts/telegram_bot.py >server/logs/telegram-bot.log 2>&1 &
-            TELEGRAM_BOT_PID=$!
-          else
-            echo "WARNING: Telegram bot secrets are not configured; RCON bot will not start."
-          fi
-
+          export SERVER_LOG="$PWD/$server_log"
           ./server/watchdog.sh >server/logs/watchdog.log 2>&1 &
           WATCHDOG_PID=$!
 
           ready=false
-          for ((second = 0; second < 180; second++)); do
-            if grep -Fq 'Done (' "$server_log"; then
+          for ((second = 0; second < 240; second++)); do
+            if grep -Fq 'Server started.' "$server_log" \
+              && grep -Fq 'Native Bedrock utility and protection features enabled.' "$server_log"; then
               ready=true
               break
             fi
@@ -215,7 +156,7 @@ jobs:
               else
                 server_status=$?
               fi
-              tail -n 30 "$server_log" || true
+              tail -n 80 "$server_log" || true
               cat frpc.log server/logs/watchdog.log 2>/dev/null || true
               exit "${server_status:-1}"
             fi
@@ -223,45 +164,12 @@ jobs:
           done
 
           if [[ "$ready" != true ]]; then
-            tail -n 30 "$server_log" || true
+            tail -n 80 "$server_log" || true
             cat server/logs/watchdog.log frpc.log 2>/dev/null || true
-            notify "Minecraft startup timed out before Paper reported ready. Check the Actions log."
+            echo "ERROR: Endstone did not report server and plugin readiness within 240 seconds." >&2
             exit 1
           fi
-
-          PYTHONPATH=scripts .venv/bin/python -c 'from rcon_utils import rcon_command; print("RCON ready: " + rcon_command("list"))'
-          for plugin in ViaVersion ViaBackwards ViaRewind Geyser-Spigot floodgate voicechat Essentials LuckPerms; do
-            if ! grep -Fq "Enabling ${plugin} v" "$server_log"; then
-              echo "ERROR: ${plugin} did not report successful plugin enablement." >&2
-              tail -n 80 "$server_log"
-              exit 1
-            fi
-          done
-          PYTHONPATH=scripts .venv/bin/python - <<'PY'
-          from rcon_utils import rcon_command
-
-          for permission in ("essentials.tpa", "essentials.tpaccept", "essentials.tpdeny"):
-              result = rcon_command(f"lp group default permission set {permission} true")
-              print(f"LuckPerms default grant {permission}: {result}")
-          PY
-          echo "Required plugins enabled: ViaVersion, ViaBackwards, ViaRewind, Geyser-Spigot, floodgate, voicechat, Essentials, LuckPerms."
-          if [[ -n "$TELEGRAM_BOT_PID" ]]; then
-            if ! kill -0 "$TELEGRAM_BOT_PID" 2>/dev/null; then
-              cat server/logs/telegram-bot.log || true
-              echo "ERROR: Telegram bot exited during startup." >&2
-              exit 1
-            fi
-            cat server/logs/telegram-bot.log
-          fi
-          if [[ -n "$AUTO_SAVE_PID" ]] && ! kill -0 "$AUTO_SAVE_PID" 2>/dev/null; then
-            cat server/logs/auto-save-loop.log || true
-            echo "ERROR: World auto-save loop exited during startup." >&2
-            exit 1
-          fi
-          cat server/logs/auto-save-loop.log || true
-
-          ready_log=$(tail -n 8 "$server_log" | sed -E 's/\x1B\[[0-9;]*[[:alpha:]]//g' | cut -c1-300 | tr -d '\r')
-          notify "Minecraft is READY on Mr0007oo/loot-low.\n\n${ready_log}"
+          echo "Native Bedrock server is ready at ${FRP_SERVER_IP}:19132/UDP."
 
           if wait "$WATCHDOG_PID"; then
             server_status=0
@@ -270,20 +178,6 @@ jobs:
           fi
           exit "$server_status"
 
-      - name: Send shutdown and world-save notification
+      - name: Persist Bedrock world and player data
         if: always()
-        env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          SERVER_STEP_OUTCOME: ${{ steps.run-server.outcome }}
-        run: |
-          if [[ -z "$TELEGRAM_BOT_TOKEN" || -z "$TELEGRAM_CHAT_ID" ]]; then
-            echo "Telegram secrets are not configured; skipping shutdown notification."
-            exit 0
-          fi
-          message="Minecraft workflow ended. Server step: ${SERVER_STEP_OUTCOME}. World and player data are pushed to Git when changed."
-          curl --silent --show-error --fail --max-time 15 --request POST \
-            "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
-            --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}" \
-            --data-urlencode "text=${message}" \
-            >/dev/null || echo "WARNING: Telegram shutdown notification failed."
+        run: python3 scripts/persist_world.py

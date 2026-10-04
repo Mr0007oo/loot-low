@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
-"""Save Minecraft state and commit configured world/player data to Git."""
+"""Commit native Bedrock world and server access data to Git."""
 
 from __future__ import annotations
 
-import argparse
 import fcntl
 import hashlib
 import os
@@ -12,16 +11,12 @@ import sys
 import time
 from pathlib import Path
 
-from rcon_utils import rcon_command
-
 ROOT = Path(__file__).resolve().parents[1]
 PERSIST_PATHS = (
-    "server/world",
-    "server/world_nether",
-    "server/world_the_end",
-    "server/ops.json",
-    "server/banned-players.json",
-    "server/usercache.json",
+    "server/worlds",
+    "server/permissions.json",
+    "server/allowlist.json",
+    "server/plugins/lootlow_bedrock/data",
 )
 TRANSIENT_EXCLUDES = (
     ":(exclude,glob)**/session.lock",
@@ -43,13 +38,6 @@ def run_git(arguments: list[str], *, check: bool = True) -> subprocess.Completed
         detail = result.stderr.strip() or result.stdout.strip()
         raise RuntimeError(f"git {' '.join(arguments)} failed: {detail}")
     return result
-
-
-def save_all() -> str:
-    response = rcon_command("save-all")
-    print(f"RCON save-all: {response or 'command sent'}", flush=True)
-    time.sleep(5)
-    return response
 
 
 def commit_and_push() -> bool:
@@ -101,17 +89,11 @@ def commit_and_push() -> bool:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--skip-rcon", action="store_true", help="commit files without sending save-all")
-    arguments = parser.parse_args()
-
     root_key = hashlib.sha256(str(ROOT).encode()).hexdigest()[:16]
     lock_path = Path("/tmp") / f"loot-low-world-persist-{root_key}.lock"
     try:
         with lock_path.open("w") as lock_file:
             fcntl.flock(lock_file, fcntl.LOCK_EX)
-            if not arguments.skip_rcon:
-                save_all()
             commit_and_push()
     except (OSError, RuntimeError, ValueError) as exc:
         print(f"ERROR: world persistence failed: {exc}", file=sys.stderr)

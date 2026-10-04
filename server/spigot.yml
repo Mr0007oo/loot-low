@@ -1,8 +1,0 @@
-entity-activation-range:
-  animals: 16
-  monsters: 24
-  raiders: 32
-  misc: 8
-  water: 8
-  villagers: 16
-  flying-monsters: 24

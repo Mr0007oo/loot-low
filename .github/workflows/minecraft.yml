@@ -129,8 +129,10 @@ jobs:
           set -uo pipefail
           mkdir -p server/logs
           server_log="server/logs/server-session.log"
+          watchdog_log="server/logs/watchdog.log"
           : >"$server_log"
-          tail -n 0 -F "$server_log" &
+          : >"$watchdog_log"
+          tail -n 0 -F "$server_log" "$watchdog_log" &
           LOG_TAIL_PID=$!
 
           cleanup() {
@@ -162,7 +164,7 @@ jobs:
           echo "Native Minecraft Bedrock UDP endpoint: ${FRP_SERVER_IP}:19132"
           export FRPC_PID FRPC_BIN="$PWD/frpc" FRPC_CONFIG="$PWD/frpc.toml" FRPC_LOG="$PWD/frpc.log"
           export SERVER_LOG="$PWD/$server_log"
-          ./server/watchdog.sh >server/logs/watchdog.log 2>&1 &
+          ./server/watchdog.sh >"$watchdog_log" 2>&1 &
           WATCHDOG_PID=$!
 
           ready=false
@@ -172,8 +174,8 @@ jobs:
               ready=true
               break
             fi
-            if grep -Fq 'ERROR:' server/logs/watchdog.log 2>/dev/null; then
-              cat server/logs/watchdog.log frpc.log 2>/dev/null || true
+            if grep -Fq 'ERROR:' "$watchdog_log" 2>/dev/null; then
+              cat "$watchdog_log" frpc.log 2>/dev/null || true
               exit 1
             fi
             if ! kill -0 "$WATCHDOG_PID" 2>/dev/null; then
@@ -183,7 +185,7 @@ jobs:
                 server_status=$?
               fi
               tail -n 80 "$server_log" || true
-              cat frpc.log server/logs/watchdog.log 2>/dev/null || true
+              cat frpc.log "$watchdog_log" 2>/dev/null || true
               exit "${server_status:-1}"
             fi
             sleep 1
@@ -191,7 +193,7 @@ jobs:
 
           if [[ "$ready" != true ]]; then
             tail -n 80 "$server_log" || true
-            cat server/logs/watchdog.log frpc.log 2>/dev/null || true
+            cat "$watchdog_log" frpc.log 2>/dev/null || true
             echo "ERROR: Endstone did not report server and plugin readiness within 240 seconds." >&2
             exit 1
           fi

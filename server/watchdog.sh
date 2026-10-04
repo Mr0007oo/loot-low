@@ -115,11 +115,8 @@ while true; do
         else
             server_status=$?
         fi
-        if [[ "$server_status" -eq 0 ]]; then
-            log "Endstone stopped cleanly; watchdog exiting."
-            exit 0
-        fi
-        log "Endstone supervisor exited with status $server_status; restarting it."
+        log "Endstone supervisor exited with status $server_status; restarting in 5 seconds."
+        sleep 5 || true
         start_server
     fi
 done

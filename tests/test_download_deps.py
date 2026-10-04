@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import hashlib
+import os
+import subprocess
 import tempfile
+import time
 import tomllib
 import unittest
 import zipfile
@@ -158,6 +161,95 @@ class BedrockRuntimeTests(unittest.TestCase):
         ).read_text(encoding="utf-8")
         self.assertIn("ENDSTONE_VERSION: 0.11.2", workflow)
         self.assertIn("BEDROCK_CLIENT_VERSION: 1.26.2", workflow)
+
+    def test_watchdog_restarts_clean_server_exit_and_stays_alive(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            frpc = root / "frpc"
+            launcher = root / "start-server"
+            config = root / "frpc.toml"
+            frpc_log = root / "frpc.log"
+            server_log = root / "server.log"
+            watchdog_log = root / "watchdog.log"
+            counter = root / "launch-count"
+            running = root / "server-running"
+            output = root / "watchdog-stdout.log"
+            config.write_text("config = true\n", encoding="utf-8")
+            frpc.write_text(
+                "#!/usr/bin/env python3\n"
+                "import signal, time\n"
+                "running = True\n"
+                "def stop(*_):\n"
+                "    global running\n"
+                "    running = False\n"
+                "signal.signal(signal.SIGTERM, stop)\n"
+                "while running:\n"
+                "    time.sleep(0.1)\n",
+                encoding="utf-8",
+            )
+            launcher.write_text(
+                "#!/usr/bin/env python3\n"
+                "import signal, time\n"
+                "from pathlib import Path\n"
+                f"counter = Path({str(counter)!r})\n"
+                f"running_file = Path({str(running)!r})\n"
+                "count = int(counter.read_text() if counter.exists() else '0') + 1\n"
+                "counter.write_text(str(count))\n"
+                "if count == 1:\n"
+                "    raise SystemExit(0)\n"
+                "running = True\n"
+                "def stop(*_):\n"
+                "    global running\n"
+                "    running = False\n"
+                "signal.signal(signal.SIGTERM, stop)\n"
+                "running_file.touch()\n"
+                "while running:\n"
+                "    time.sleep(0.1)\n",
+                encoding="utf-8",
+            )
+            frpc.chmod(0o755)
+            launcher.chmod(0o755)
+            env = os.environ | {
+                "FRP_SERVER_IP": "127.0.0.1",
+                "FRP_TOKEN": "test-token",
+                "FRPC_BIN": str(frpc),
+                "FRPC_CONFIG": str(config),
+                "FRPC_LOG": str(frpc_log),
+                "SERVER_LAUNCHER": str(launcher),
+                "SERVER_LOG": str(server_log),
+                "WATCHDOG_LOG": str(watchdog_log),
+                "WATCHDOG_INTERVAL_SECONDS": "1",
+            }
+            with output.open("w", encoding="utf-8") as stdout:
+                watchdog = subprocess.Popen(
+                    ["bash", str(Path(__file__).parents[1] / "server" / "watchdog.sh")],
+                    env=env,
+                    stdout=stdout,
+                    stderr=subprocess.STDOUT,
+                )
+                try:
+                    deadline = time.monotonic() + 15
+                    while time.monotonic() < deadline:
+                        if running.exists() and counter.exists() and counter.read_text() == "2":
+                            break
+                        if watchdog.poll() is not None:
+                            self.fail(f"Watchdog exited unexpectedly with status {watchdog.returncode}")
+                        time.sleep(0.1)
+                    else:
+                        self.fail("Watchdog did not restart after a clean server exit")
+
+                    watchdog.terminate()
+                    self.assertNotEqual(watchdog.wait(timeout=10), 0)
+                finally:
+                    if watchdog.poll() is None:
+                        watchdog.terminate()
+                        watchdog.wait(timeout=10)
+
+            log_text = output.read_text(encoding="utf-8")
+            self.assertIn(
+                "Endstone supervisor exited with status 0; restarting in 5 seconds.",
+                log_text,
+            )
 
 
 if __name__ == "__main__":

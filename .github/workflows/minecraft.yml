@@ -1,6 +1,8 @@
 name: Native Bedrock Server
 
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
   workflow_call:
 

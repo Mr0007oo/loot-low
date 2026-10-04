@@ -49,6 +49,7 @@ class BedrockRuntimeTests(unittest.TestCase):
         workflow = (root / ".github" / "workflows" / "minecraft.yml").read_text(
             encoding="utf-8"
         )
+        self.assertIn("push:\n    branches: [main]", workflow)
         self.assertNotIn("pip wheel", workflow)
         self.assertNotIn("Native Bedrock utility and protection features enabled.", workflow)
 

@@ -27,6 +27,12 @@ fi
     "$SERVER_DIR/plugins/fun_plugins"
 "$SERVER_DIR/.venv/bin/python" -m pip install --disable-pip-version-check \
     "$SERVER_DIR/plugins/vein_miner"
+"$SERVER_DIR/.venv/bin/python" -m pip install --disable-pip-version-check \
+    "$SERVER_DIR/plugins/container_plugins"
+"$SERVER_DIR/.venv/bin/python" -m pip install --disable-pip-version-check \
+    "$SERVER_DIR/plugins/land_claims"
+"$SERVER_DIR/.venv/bin/python" -m pip install --disable-pip-version-check \
+    "$SERVER_DIR/plugins/world_edit"
 python3.13 "$ROOT_DIR/scripts/download_deps.py" --check
 
 runtime_version="$("$SERVER_DIR/.venv/bin/python" -c \

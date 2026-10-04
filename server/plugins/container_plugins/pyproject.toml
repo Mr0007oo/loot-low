@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "endstone-container-plugins"
+version = "1.0.0"
+description = "Ender chest access and in-memory portable backpacks for Endstone"
+requires-python = ">=3.10"
+dependencies = ["endstone==0.11.2"]
+
+[project.entry-points."endstone"]
+container-plugins = "container_plugins:ContainerPlugins"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]

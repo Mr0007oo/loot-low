@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "endstone-world-edit"
+version = "1.0.0"
+description = "A constrained region selection and block filler for Endstone"
+requires-python = ">=3.10"
+dependencies = ["endstone==0.11.2"]
+
+[project.entry-points."endstone"]
+world-edit = "world_edit:WorldEditPlugin"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]

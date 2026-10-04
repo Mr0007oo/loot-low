@@ -25,9 +25,9 @@ playability. The dependency setup purges the previous BDS runtime while
 preserving worlds and server access configuration, verifies the binary against
 Mojang's published archive digest, and checks Endstone's embedded target before
 the server process starts. CI uses Endstone's `--yes --no-interactive` options.
-Python 3.13 installs and launches Endstone, ServerUtils, and FunPlugins. The
-launcher removes the retired `endstone-lootlow-bedrock` distribution from an
-existing virtual environment before starting.
+Python 3.13 installs and launches Endstone and all six plugins. The launcher
+removes the retired `endstone-lootlow-bedrock` distribution from an existing
+virtual environment before starting.
 
 ## Server utilities
 
@@ -49,6 +49,22 @@ per player. It traverses only face-adjacent blocks and does not delete or reset
 world directories or server configuration. Bonus ore drops use basic drop
 amounts and do not simulate tool enchantments or durability use.
 
+The `endstone-container-plugins` package adds `/ec` to display the caller's
+Ender Chest contents and `/backpack` for a 27-slot, in-memory portable bag.
+Use `/backpack store <inventory_slot> <bag_slot>` and
+`/backpack take <bag_slot>` to move items; backpacks do not persist across
+server restarts.
+
+The `endstone-land-claims` package adds `/claim`, `/unclaim`, `/trust <player>`,
+and `/untrust <player>`. Claims cover the current 16-by-16 chunk and are saved
+as JSON in the plugin's data folder. Block breaking and placement are denied in
+another player's claim unless the actor is trusted there.
+
+The `endstone-world-edit` package adds `/pos1`, `/pos2`, and `/fill <block_type>`.
+Fills are capped at 512 blocks and pre-check every affected claim before
+changing any blocks. World Edit depends on Land Claims and fails closed if the
+protection plugin is unavailable.
+
 The server listens on UDP 19132, binds to `0.0.0.0`, allows supported outdated
 clients, and disables server telemetry in `server/server.properties`. The
 configured view distance is 8 chunks and tick distance is 4 chunks to limit
@@ -67,3 +83,5 @@ converter.
 The workflow restores cached Bedrock world and access data and commits it back
 to the current branch after the server stops. The Endstone runtime and
 generated virtual environment are downloaded on demand and are not committed.
+The launch and CI validation steps do not clear, delete, or address the separate
+`server/worlds/` or `server/world/` directories.

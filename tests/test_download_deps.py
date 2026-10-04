@@ -44,11 +44,14 @@ class BedrockRuntimeTests(unittest.TestCase):
 
         launcher = (root / "server" / "start.sh").read_text(encoding="utf-8")
         self.assertIn("pip uninstall", launcher)
-        self.assertEqual(launcher.count("pip install"), 4)
+        self.assertEqual(launcher.count("pip install"), 7)
         self.assertIn('pip install --disable-pip-version-check "$wheel"', launcher)
         self.assertIn('"$SERVER_DIR/plugins/server_utils"', launcher)
         self.assertIn('"$SERVER_DIR/plugins/fun_plugins"', launcher)
         self.assertIn('"$SERVER_DIR/plugins/vein_miner"', launcher)
+        self.assertIn('"$SERVER_DIR/plugins/container_plugins"', launcher)
+        self.assertIn('"$SERVER_DIR/plugins/land_claims"', launcher)
+        self.assertIn('"$SERVER_DIR/plugins/world_edit"', launcher)
         self.assertIn("exec {server_stdin_fd}< <(tail -f /dev/null)", launcher)
         self.assertIn('--no-interactive <&"$server_stdin_fd" &', launcher)
         self.assertIn("close_server_stdin", launcher)
@@ -76,6 +79,11 @@ class BedrockRuntimeTests(unittest.TestCase):
         self.assertIn("Server utilities enabled.", workflow)
         self.assertIn("fun_plugins", workflow)
         self.assertIn("Fun command utilities enabled.", workflow)
+        self.assertIn("Container commands enabled.", workflow)
+        self.assertIn("Land Claims enabled", workflow)
+        self.assertIn("World Edit enabled (512-block fill limit).", workflow)
+        for plugin in ("container_plugins", "land_claims", "world_edit"):
+            self.assertIn(f"server/plugins/{plugin}", workflow)
 
         fun_manifest = root / "server" / "plugins" / "fun_plugins" / "pyproject.toml"
         fun_project = tomllib.loads(fun_manifest.read_text(encoding="utf-8"))["project"]
@@ -133,6 +141,67 @@ class BedrockRuntimeTests(unittest.TestCase):
         self.assertIn("def on_block_break(self, event: BlockBreakEvent)", vein_source)
         self.assertIn('"veinmine"', vein_source)
         self.assertIn("self.register_events(self)", vein_source)
+
+        plugin_specs = (
+            (
+                "container_plugins",
+                "endstone-container-plugins",
+                "container-plugins",
+                "container_plugins:ContainerPlugins",
+            ),
+            (
+                "land_claims",
+                "endstone-land-claims",
+                "land-claims",
+                "land_claims:LandClaimsPlugin",
+            ),
+            (
+                "world_edit",
+                "endstone-world-edit",
+                "world-edit",
+                "world_edit:WorldEditPlugin",
+            ),
+        )
+        for folder, distribution, entry_point, target in plugin_specs:
+            manifest = root / "server" / "plugins" / folder / "pyproject.toml"
+            project = tomllib.loads(manifest.read_text(encoding="utf-8"))["project"]
+            self.assertEqual(project["name"], distribution)
+            self.assertEqual(project["dependencies"], ["endstone==0.11.2"])
+            self.assertEqual(project["entry-points"]["endstone"][entry_point], target)
+
+        containers_source = (
+            root
+            / "server"
+            / "plugins"
+            / "container_plugins"
+            / "src"
+            / "container_plugins"
+            / "__init__.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn('"ec"', containers_source)
+        self.assertIn('"backpack"', containers_source)
+        self.assertIn("sender.ender_chest", containers_source)
+        self.assertIn("BACKPACK_SIZE = 27", containers_source)
+        self.assertIn("self.backpacks:", containers_source)
+
+        claims_source = (
+            root / "server" / "plugins" / "land_claims" / "src" / "land_claims" / "__init__.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn("BlockBreakEvent", claims_source)
+        self.assertIn("BlockPlaceEvent", claims_source)
+        self.assertIn("event.cancelled = True", claims_source)
+        self.assertIn("claims.json", claims_source)
+        self.assertIn("def can_modify(", claims_source)
+
+        world_edit_source = (
+            root / "server" / "plugins" / "world_edit" / "src" / "world_edit" / "__init__.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn("MAX_FILL_BLOCKS = 512", world_edit_source)
+        self.assertIn("if block_count > MAX_FILL_BLOCKS", world_edit_source)
+        self.assertIn('"pos1"', world_edit_source)
+        self.assertIn('"pos2"', world_edit_source)
+        self.assertIn('"fill"', world_edit_source)
+        self.assertIn("claim_plugin.can_modify(", world_edit_source)
 
     def make_archive(self, archive_path: Path, executable: bytes = b"pinned-bds") -> str:
         with zipfile.ZipFile(archive_path, "w") as archive:

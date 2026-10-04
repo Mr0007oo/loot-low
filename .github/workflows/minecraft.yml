@@ -35,13 +35,15 @@ jobs:
 
       - name: Validate native server code and configuration
         run: |
-          python3 -m compileall -q scripts tests server/plugins/server_utils/src server/plugins/fun_plugins/src
+          python3 -m compileall -q scripts tests server/plugins/server_utils/src server/plugins/fun_plugins/src server/plugins/vein_miner/src
           python3 -m unittest discover -s tests -v
           bash -n server/start.sh server/watchdog.sh
           python3 -m pip wheel --disable-pip-version-check --no-deps \
             --wheel-dir "$RUNNER_TEMP" server/plugins/server_utils
           python3 -m pip wheel --disable-pip-version-check --no-deps \
             --wheel-dir "$RUNNER_TEMP" server/plugins/fun_plugins
+          python3 -m pip wheel --disable-pip-version-check --no-deps \
+            --wheel-dir "$RUNNER_TEMP" server/plugins/vein_miner
           python3 -m json.tool server/permissions.json >/dev/null
           python3 -m json.tool server/allowlist.json >/dev/null
           python3 - <<'PY'
@@ -171,7 +173,8 @@ jobs:
           for ((second = 0; second < 240; second++)); do
             if grep -Fq 'Server started.' "$server_log" \
               && grep -Fq 'Server utilities enabled.' "$server_log" \
-              && grep -Fq 'Fun command utilities enabled.' "$server_log"; then
+              && grep -Fq 'Fun command utilities enabled.' "$server_log" \
+              && grep -Fq 'Vein Miner enabled (32-block limit).' "$server_log"; then
               ready=true
               break
             fi

@@ -44,10 +44,11 @@ class BedrockRuntimeTests(unittest.TestCase):
 
         launcher = (root / "server" / "start.sh").read_text(encoding="utf-8")
         self.assertIn("pip uninstall", launcher)
-        self.assertEqual(launcher.count("pip install"), 3)
+        self.assertEqual(launcher.count("pip install"), 4)
         self.assertIn('pip install --disable-pip-version-check "$wheel"', launcher)
         self.assertIn('"$SERVER_DIR/plugins/server_utils"', launcher)
         self.assertIn('"$SERVER_DIR/plugins/fun_plugins"', launcher)
+        self.assertIn('"$SERVER_DIR/plugins/vein_miner"', launcher)
         self.assertIn("exec {server_stdin_fd}< <(tail -f /dev/null)", launcher)
         self.assertIn('--no-interactive <&"$server_stdin_fd" &', launcher)
         self.assertIn("close_server_stdin", launcher)
@@ -91,7 +92,47 @@ class BedrockRuntimeTests(unittest.TestCase):
         self.assertIn('"roll"', fun_source)
         self.assertIn('"magic8ball"', fun_source)
         self.assertIn("ROLL_MAX_SIDES = 1_000", fun_source)
+        for command in ("sethome", "home", "tpa", "tpaccept", "tpdeny"):
+            self.assertIn(f'        "{command}": {{', fun_source)
+        self.assertIn("self.homes = {}", fun_source)
+        self.assertIn("self.tpa_requests = {}", fun_source)
+        self.assertIn("sender.unique_id", fun_source)
+        self.assertIn("sender.location", fun_source)
         self.assertNotIn("@event_handler", fun_source)
+
+        launcher = (root / "server" / "start.sh").read_text(encoding="utf-8")
+        self.assertNotIn("server/worlds", launcher)
+        self.assertNotIn("server/world/", launcher)
+        persistence = (root / "scripts" / "persist_world.py").read_text(encoding="utf-8")
+        self.assertNotIn('"server/worlds"', persistence)
+        self.assertNotIn('"server/world/"', persistence)
+        workflow = (root / ".github" / "workflows" / "minecraft.yml").read_text(
+            encoding="utf-8"
+        )
+        workflow_paths = {line.strip() for line in workflow.splitlines()}
+        self.assertNotIn("server/worlds", workflow_paths)
+        self.assertNotIn("server/world/", workflow_paths)
+
+        vein_manifest = root / "server" / "plugins" / "vein_miner" / "pyproject.toml"
+        vein_project = tomllib.loads(vein_manifest.read_text(encoding="utf-8"))["project"]
+        self.assertEqual(vein_project["name"], "endstone-vein-miner")
+        self.assertEqual(vein_project["dependencies"], ["endstone==0.11.2"])
+        self.assertEqual(
+            vein_project["entry-points"]["endstone"]["vein-miner"],
+            "vein_miner:VeinMinerPlugin",
+        )
+        vein_source = (
+            root / "server" / "plugins" / "vein_miner" / "src" / "vein_miner" / "__init__.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn("MAX_BLOCKS_PER_BREAK = 32", vein_source)
+        self.assertIn(
+            "from endstone.event import BlockBreakEvent, EventPriority, event_handler",
+            vein_source,
+        )
+        self.assertIn("ignore_cancelled=True", vein_source)
+        self.assertIn("def on_block_break(self, event: BlockBreakEvent)", vein_source)
+        self.assertIn('"veinmine"', vein_source)
+        self.assertIn("self.register_events(self)", vein_source)
 
     def make_archive(self, archive_path: Path, executable: bytes = b"pinned-bds") -> str:
         with zipfile.ZipFile(archive_path, "w") as archive:

@@ -38,8 +38,16 @@ under Endstone's `endstone-<entry-point>` validation rule. It does not register
 event listeners.
 
 The `endstone-fun-plugins` package adds `/coinflip`, `/roll [sides]` (2-1000),
-and `/magic8ball <question>`. These commands are available to all players and
-do not register event listeners or perform world-wide operations.
+`/magic8ball <question>`, `/sethome`, `/home`, `/tpa <player>`, `/tpaccept`,
+and `/tpdeny`. Homes and pending teleport requests are held in memory and do
+not survive a plugin/server restart. These commands are available to all
+players and do not register event listeners or perform world-wide operations.
+
+The `endstone-vein-miner` plugin automatically breaks up to 32 connected,
+identical ores or logs in survival mode. Use `/veinmine` to toggle it on or off
+per player. It traverses only face-adjacent blocks and does not delete or reset
+world directories or server configuration. Bonus ore drops use basic drop
+amounts and do not simulate tool enchantments or durability use.
 
 The server listens on UDP 19132, binds to `0.0.0.0`, allows supported outdated
 clients, and disables server telemetry in `server/server.properties`. The

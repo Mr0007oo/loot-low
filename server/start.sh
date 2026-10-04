@@ -25,6 +25,8 @@ fi
     "$SERVER_DIR/plugins/server_utils"
 "$SERVER_DIR/.venv/bin/python" -m pip install --disable-pip-version-check \
     "$SERVER_DIR/plugins/fun_plugins"
+"$SERVER_DIR/.venv/bin/python" -m pip install --disable-pip-version-check \
+    "$SERVER_DIR/plugins/vein_miner"
 python3.13 "$ROOT_DIR/scripts/download_deps.py" --check
 
 runtime_version="$("$SERVER_DIR/.venv/bin/python" -c \

@@ -3,14 +3,14 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "endstone-fun-plugins"
+name = "endstone-vein-miner"
 version = "1.0.0"
-description = "Lightweight fun, home, and teleport commands for Endstone"
+description = "Bounded vein mining for Endstone"
 requires-python = ">=3.10"
 dependencies = ["endstone==0.11.2"]
 
 [project.entry-points."endstone"]
-fun-plugins = "fun_plugins:FunPlugins"
+vein-miner = "vein_miner:VeinMinerPlugin"
 
 [tool.setuptools]
 package-dir = {"" = "src"}

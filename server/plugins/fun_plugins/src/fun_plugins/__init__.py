@@ -1,5 +1,6 @@
 import secrets
 
+from endstone import Player
 from endstone.command import Command, CommandSender
 from endstone.plugin import Plugin
 
@@ -36,6 +37,31 @@ class FunPlugins(Plugin):
             "usages": ["/magic8ball <question>"],
             "permissions": ["funplugins.magic8ball"],
         },
+        "sethome": {
+            "description": "Set your home at your current location",
+            "usages": ["/sethome"],
+            "permissions": ["funplugins.sethome"],
+        },
+        "home": {
+            "description": "Teleport to your saved home",
+            "usages": ["/home"],
+            "permissions": ["funplugins.home"],
+        },
+        "tpa": {
+            "description": "Request to teleport to another player",
+            "usages": ["/tpa <player>"],
+            "permissions": ["funplugins.tpa"],
+        },
+        "tpaccept": {
+            "description": "Accept a pending teleport request",
+            "usages": ["/tpaccept"],
+            "permissions": ["funplugins.tpaccept"],
+        },
+        "tpdeny": {
+            "description": "Deny a pending teleport request",
+            "usages": ["/tpdeny"],
+            "permissions": ["funplugins.tpdeny"],
+        },
     }
 
     permissions = {
@@ -51,9 +77,31 @@ class FunPlugins(Plugin):
             "description": "Ask the magic 8-ball a question",
             "default": True,
         },
+        "funplugins.sethome": {
+            "description": "Set your home",
+            "default": True,
+        },
+        "funplugins.home": {
+            "description": "Teleport to your home",
+            "default": True,
+        },
+        "funplugins.tpa": {
+            "description": "Request to teleport to another player",
+            "default": True,
+        },
+        "funplugins.tpaccept": {
+            "description": "Accept teleport requests",
+            "default": True,
+        },
+        "funplugins.tpdeny": {
+            "description": "Deny teleport requests",
+            "default": True,
+        },
     }
 
     def on_enable(self) -> None:
+        self.homes = {}
+        self.tpa_requests = {}
         self.logger.info("Fun command utilities enabled.")
 
     def on_command(self, sender: CommandSender, command: Command, args: list[str]) -> bool:
@@ -84,6 +132,85 @@ class FunPlugins(Plugin):
                 sender.send_message("Error: Usage: /magic8ball <question>")
                 return True
             sender.send_message(f"Magic 8-ball: {secrets.choice(EIGHT_BALL_ANSWERS)}")
+            return True
+
+        if command.name in ("sethome", "home", "tpa", "tpaccept", "tpdeny"):
+            if not isinstance(sender, Player):
+                sender.send_message("Error: This command can only be used by a player.")
+                return True
+
+        if command.name == "sethome":
+            if args:
+                sender.send_message("Error: Usage: /sethome")
+                return True
+            self.homes[sender.unique_id] = sender.location
+            sender.send_message("Home set at your current location.")
+            return True
+
+        if command.name == "home":
+            if args:
+                sender.send_message("Error: Usage: /home")
+                return True
+            location = self.homes.get(sender.unique_id)
+            if location is None:
+                sender.send_message("Error: You have not set a home yet.")
+                return True
+            if sender.teleport(location):
+                sender.send_message("Teleported to your home.")
+            else:
+                sender.send_message("Error: Could not teleport you to your home.")
+            return True
+
+        if command.name == "tpa":
+            if len(args) != 1:
+                sender.send_message("Error: Usage: /tpa <player>")
+                return True
+            target = self.server.get_player(args[0])
+            if target is None:
+                sender.send_message("Error: That player is not online.")
+                return True
+            if target.unique_id == sender.unique_id:
+                sender.send_message("Error: You cannot request to teleport to yourself.")
+                return True
+            self.tpa_requests[target.unique_id] = sender.unique_id
+            target.send_message(
+                f"{sender.name} requested to teleport to you. Use /tpaccept or /tpdeny."
+            )
+            sender.send_message(f"Teleport request sent to {target.name}.")
+            return True
+
+        if command.name == "tpaccept":
+            if args:
+                sender.send_message("Error: Usage: /tpaccept")
+                return True
+            requester_id = self.tpa_requests.pop(sender.unique_id, None)
+            if requester_id is None:
+                sender.send_message("Error: You have no pending teleport requests.")
+                return True
+            requester = self.server.get_player(requester_id)
+            if requester is None:
+                sender.send_message("Error: The requesting player is no longer online.")
+                return True
+            if requester.teleport(sender.location):
+                requester.send_message(f"{sender.name} accepted your teleport request.")
+                sender.send_message(f"Teleported {requester.name} to you.")
+            else:
+                requester.send_message("Error: Your teleport request could not be completed.")
+                sender.send_message("Error: Could not teleport the requesting player.")
+            return True
+
+        if command.name == "tpdeny":
+            if args:
+                sender.send_message("Error: Usage: /tpdeny")
+                return True
+            requester_id = self.tpa_requests.pop(sender.unique_id, None)
+            if requester_id is None:
+                sender.send_message("Error: You have no pending teleport requests.")
+                return True
+            requester = self.server.get_player(requester_id)
+            sender.send_message("Teleport request denied.")
+            if requester is not None:
+                requester.send_message(f"{sender.name} denied your teleport request.")
             return True
 
         return False

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 import hashlib
 import os
 import subprocess
@@ -14,6 +15,47 @@ from scripts import download_deps
 
 
 class BedrockRuntimeTests(unittest.TestCase):
+    def test_plugin_event_handlers_use_runtime_event_annotations(self) -> None:
+        plugin = (
+            Path(__file__).parents[1]
+            / "server"
+            / "plugins"
+            / "lootlow_bedrock"
+            / "src"
+            / "lootlow_bedrock"
+            / "plugin.py"
+        )
+        module = ast.parse(plugin.read_text(encoding="utf-8"))
+        uses_postponed_annotations = any(
+            isinstance(node, ast.ImportFrom)
+            and node.module == "__future__"
+            and any(alias.name == "annotations" for alias in node.names)
+            for node in module.body
+        )
+        self.assertFalse(uses_postponed_annotations)
+
+        expected_handlers = {
+            "on_block_break": "BlockBreakEvent",
+            "on_block_place": "BlockPlaceEvent",
+            "on_player_interact": "PlayerInteractEvent",
+            "on_actor_explode": "ActorExplodeEvent",
+            "on_block_explode": "BlockExplodeEvent",
+        }
+        handlers = {
+            node.name: node
+            for node in ast.walk(module)
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+            and any(
+                isinstance(decorator, ast.Name) and decorator.id == "event_handler"
+                for decorator in node.decorator_list
+            )
+        }
+        self.assertEqual(set(handlers), set(expected_handlers))
+        for name, event_type in expected_handlers.items():
+            event_argument = handlers[name].args.args[1]
+            self.assertIsInstance(event_argument.annotation, ast.Name, name)
+            self.assertEqual(event_argument.annotation.id, event_type, name)
+
     def make_archive(self, archive_path: Path, executable: bytes = b"pinned-bds") -> str:
         with zipfile.ZipFile(archive_path, "w") as archive:
             archive.writestr("bedrock_server", executable)

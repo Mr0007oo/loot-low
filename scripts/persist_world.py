@@ -6,6 +6,7 @@ from __future__ import annotations
 import fcntl
 import hashlib
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -13,10 +14,10 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 PERSIST_PATHS = (
-    "server/worlds",
+    "server/bedrock_server/worlds",
+    "server/bedrock_server/plugins/lootlow_bedrock/data",
     "server/permissions.json",
     "server/allowlist.json",
-    "server/plugins/lootlow_bedrock/data",
 )
 TRANSIENT_EXCLUDES = (
     ":(exclude,glob)**/session.lock",
@@ -70,6 +71,7 @@ def commit_and_push() -> bool:
         if push.returncode == 0:
             print(f"Committed and pushed world data to {branch}.")
             return True
+
         if attempt == 3:
             detail = push.stderr.strip() or push.stdout.strip()
             raise RuntimeError(f"Git push failed after {attempt} attempts: {detail}")
@@ -88,12 +90,22 @@ def commit_and_push() -> bool:
     raise RuntimeError("Git push retry limit reached")
 
 
+def sync_runtime_access_files() -> None:
+    runtime_dir = ROOT / "server" / "bedrock_server"
+    for name in ("permissions.json", "allowlist.json"):
+        source = runtime_dir / name
+        destination = ROOT / "server" / name
+        if source.is_file():
+            shutil.copy2(source, destination)
+
+
 def main() -> int:
     root_key = hashlib.sha256(str(ROOT).encode()).hexdigest()[:16]
     lock_path = Path("/tmp") / f"loot-low-world-persist-{root_key}.lock"
     try:
         with lock_path.open("w") as lock_file:
             fcntl.flock(lock_file, fcntl.LOCK_EX)
+            sync_runtime_access_files()
             commit_and_push()
     except (OSError, RuntimeError, ValueError) as exc:
         print(f"ERROR: world persistence failed: {exc}", file=sys.stderr)

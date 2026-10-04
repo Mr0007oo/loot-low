@@ -1,6 +1,7 @@
 # Create gitignore file to exclude sensitive/large runtime files
 server/logs/
 server/.venv/
+server/bedrock_server/
 server/worlds/
 server/endstone-*.whl
 server/endstone-*.zip

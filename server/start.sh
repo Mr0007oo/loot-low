@@ -2,6 +2,7 @@
 set -euo pipefail
 
 SERVER_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
+ROOT_DIR="$(dirname "$SERVER_DIR")"
 cd "$SERVER_DIR"
 
 if ! command -v python3.13 >/dev/null 2>&1; then
@@ -9,13 +10,9 @@ if ! command -v python3.13 >/dev/null 2>&1; then
     exit 1
 fi
 
-wheel=""
-while IFS= read -r candidate; do
-    wheel="$candidate"
-    break
-done < <(find "$SERVER_DIR" -maxdepth 1 -type f -name 'endstone-*-cp313-cp313-manylinux*_x86_64.whl' -print)
-if [[ -z "$wheel" ]]; then
-    echo "ERROR: Endstone runtime wheel is missing. Run scripts/download_deps.py first." >&2
+wheel="$SERVER_DIR/endstone-0.11.2-cp313-cp313-manylinux_2_31_x86_64.whl"
+if [[ ! -f "$wheel" ]]; then
+    echo "ERROR: Pinned Endstone 0.11.2 runtime wheel is missing. Run scripts/download_deps.py first." >&2
     exit 1
 fi
 if [[ ! -f "$SERVER_DIR/plugins/lootlow_bedrock/pyproject.toml" ]]; then
@@ -29,6 +26,14 @@ fi
 "$SERVER_DIR/.venv/bin/python" -m pip install --disable-pip-version-check "$wheel"
 "$SERVER_DIR/.venv/bin/python" -m pip install --disable-pip-version-check \
     "$SERVER_DIR/plugins/lootlow_bedrock"
+python3.13 "$ROOT_DIR/scripts/download_deps.py" --check
+
+runtime_version="$("$SERVER_DIR/.venv/bin/python" -c \
+    'import endstone; from importlib.metadata import version; print(version("endstone") + " " + endstone.__minecraft_version__)')"
+if [[ "$runtime_version" != "0.11.2 26.3" ]]; then
+    echo "ERROR: Endstone runtime must be 0.11.2 targeting BDS 26.3; found: $runtime_version" >&2
+    exit 1
+fi
 
 server_pid=""
 stop_server() {

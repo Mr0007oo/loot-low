@@ -33,7 +33,8 @@ jobs:
 
       - name: Validate native server code and configuration
         run: |
-          python3 -m compileall -q scripts server/plugins/lootlow_bedrock/src
+          python3 -m compileall -q scripts tests server/plugins/lootlow_bedrock/src
+          python3 -m unittest discover -s tests -v
           bash -n server/start.sh server/watchdog.sh
           python3 -m json.tool server/permissions.json >/dev/null
           python3 -m json.tool server/allowlist.json >/dev/null
@@ -46,7 +47,11 @@ jobs:
               if line and not line.startswith("#") and "=" in line:
                   key, value = line.split("=", 1)
                   properties[key.strip()] = value.strip()
-          expected = {"server-port": "19132", "server-ip": "0.0.0.0"}
+          expected = {
+              "server-port": "19132",
+              "server-ip": "0.0.0.0",
+              "allow-outdated-client": "true",
+          }
           mismatches = {
               key: (properties.get(key), value)
               for key, value in expected.items()
@@ -66,18 +71,21 @@ jobs:
         uses: actions/cache@v4
         with:
           path: |
-            server/worlds
+            server/bedrock_server/worlds
+            server/bedrock_server/plugins/lootlow_bedrock/data
             server/permissions.json
             server/allowlist.json
-            server/plugins/lootlow_bedrock/data
           key: bedrock-world-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: bedrock-world-
 
       - name: Download and validate Endstone
         env:
-          ENDSTONE_VERSION: ${{ vars.ENDSTONE_VERSION }}
-          BEDROCK_CLIENT_VERSION: ${{ vars.BEDROCK_CLIENT_VERSION || '1.26.2' }}
+          ENDSTONE_VERSION: 0.11.2
+          BEDROCK_CLIENT_VERSION: 1.26.2
         run: python3 scripts/download_deps.py
+
+      - name: Verify pinned Bedrock runtime before startup
+        run: python3 scripts/download_deps.py --check
 
       - name: Assert native-only server artifacts
         run: |

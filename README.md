@@ -25,8 +25,11 @@ must still use a protocol accepted by the selected Endstone/BDS release. The
 downloader reports the release's declared Bedrock version and warns when it
 differs from the requested client version; the older-client setting is not a
 substitute for confirming the handshake with a real 1.26.2 client.
-Endstone bundles its own native Bedrock Dedicated Server runtime; Python 3.13
-is used to install and launch that runtime and the in-repository plugin.
+Endstone downloads and extracts the matching native Bedrock Dedicated Server
+into `server/bedrock_server/` on startup. The CI launcher uses Endstone's
+`--yes --no-interactive` options so first-run downloads and version updates do
+not prompt for console input. Python 3.13 is used to install and launch
+Endstone and the in-repository plugin.
 
 ## Native plugin features
 

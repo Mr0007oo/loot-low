@@ -45,7 +45,10 @@ restart_count=0
 max_restarts=3
 while true; do
     echo "[$(date -Is)] Starting native Bedrock server with Endstone ${wheel##*/} (restart ${restart_count}/${max_restarts})."
-    "$SERVER_DIR/.venv/bin/python" -m endstone -i &
+    "$SERVER_DIR/.venv/bin/python" -m endstone \
+        --server-folder "$SERVER_DIR/bedrock_server" \
+        --yes \
+        --no-interactive &
     server_pid=$!
     if wait "$server_pid"; then
         exit_code=0

@@ -31,12 +31,29 @@ if [[ "$runtime_version" != "0.11.2 26.3" ]]; then
 fi
 
 server_pid=""
+server_stdin_pid=""
+server_stdin_fd=""
+
+close_server_stdin() {
+    if [[ -n "$server_stdin_pid" ]]; then
+        kill -TERM "$server_stdin_pid" 2>/dev/null || true
+        wait "$server_stdin_pid" 2>/dev/null || true
+        server_stdin_pid=""
+    fi
+    if [[ -n "$server_stdin_fd" ]]; then
+        exec {server_stdin_fd}<&-
+        server_stdin_fd=""
+    fi
+}
+
 stop_server() {
     if [[ -n "$server_pid" ]] && kill -0 "$server_pid" 2>/dev/null; then
         echo "[$(date -Is)] Shutdown requested; forwarding SIGTERM to Endstone."
         kill -TERM "$server_pid" 2>/dev/null || true
         wait "$server_pid" 2>/dev/null || true
+        server_pid=""
     fi
+    close_server_stdin
     exit 143
 }
 trap stop_server INT TERM
@@ -45,10 +62,12 @@ restart_count=0
 max_restarts=3
 while true; do
     echo "[$(date -Is)] Starting native Bedrock server with Endstone ${wheel##*/} (restart ${restart_count}/${max_restarts})."
+    exec {server_stdin_fd}< <(tail -f /dev/null)
+    server_stdin_pid=$!
     "$SERVER_DIR/.venv/bin/python" -m endstone \
         --server-folder "$SERVER_DIR/bedrock_server" \
         --yes \
-        --no-interactive &
+        --no-interactive <&"$server_stdin_fd" &
     server_pid=$!
     if wait "$server_pid"; then
         exit_code=0
@@ -56,6 +75,7 @@ while true; do
         exit_code=$?
     fi
     server_pid=""
+    close_server_stdin
 
     if [[ "$exit_code" -eq 0 ]]; then
         echo "[$(date -Is)] Endstone stopped cleanly."

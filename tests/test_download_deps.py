@@ -45,6 +45,9 @@ class BedrockRuntimeTests(unittest.TestCase):
         self.assertIn("pip uninstall", launcher)
         self.assertEqual(launcher.count("pip install"), 1)
         self.assertIn('pip install --disable-pip-version-check "$wheel"', launcher)
+        self.assertIn("exec {server_stdin_fd}< <(tail -f /dev/null)", launcher)
+        self.assertIn('--no-interactive <&"$server_stdin_fd" &', launcher)
+        self.assertIn("close_server_stdin", launcher)
 
         workflow = (root / ".github" / "workflows" / "minecraft.yml").read_text(
             encoding="utf-8"

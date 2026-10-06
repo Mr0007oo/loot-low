@@ -162,10 +162,11 @@ class FunPlugins(Plugin):
             return True
 
         if command.name == "tpa":
-            if len(args) != 1:
+            target_name = " ".join(args).strip()
+            if not target_name:
                 sender.send_message("Error: Usage: /tpa <player>")
                 return True
-            target = self.server.get_player(args[0])
+            target = self.server.get_player(target_name)
             if target is None:
                 sender.send_message("Error: That player is not online.")
                 return True

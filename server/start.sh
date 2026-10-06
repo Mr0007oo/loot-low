@@ -3,6 +3,7 @@ set -euo pipefail
 
 SERVER_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 ROOT_DIR="$(dirname "$SERVER_DIR")"
+WORLD_PERSIST_SCRIPT="${WORLD_PERSIST_SCRIPT:-$ROOT_DIR/scripts/persist_world.py}"
 cd "$SERVER_DIR"
 
 if ! command -v python3.13 >/dev/null 2>&1; then
@@ -71,6 +72,19 @@ stop_server() {
     exit 143
 }
 trap stop_server INT TERM
+
+persist_world_on_exit() {
+    local exit_status=$?
+    trap - EXIT
+    if ! python3 "$WORLD_PERSIST_SCRIPT"; then
+        echo "[$(date -Is)] ERROR: Failed to persist world data during shutdown." >&2
+        if [[ "$exit_status" -eq 0 ]]; then
+            exit_status=1
+        fi
+    fi
+    exit "$exit_status"
+}
+trap persist_world_on_exit EXIT
 
 restart_count=0
 max_restarts=3

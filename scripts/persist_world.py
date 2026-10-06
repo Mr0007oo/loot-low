@@ -10,10 +10,13 @@ import shutil
 import subprocess
 import sys
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 PERSIST_PATHS = (
+    "server/world",
+    "server/worlds",
     "server/bedrock_server/worlds",
     "server/permissions.json",
     "server/allowlist.json",
@@ -51,39 +54,42 @@ def commit_and_push() -> bool:
     if staged.returncode == 1:
         run_git(["config", "user.name", "github-actions[bot]"])
         run_git(["config", "user.email", "41898282+github-actions[bot]@users.noreply.github.com"])
-        run_git(["commit", "-m", "Persist Minecraft world [skip ci]"])
+        timestamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        run_git(
+            [
+                "commit",
+                "--only",
+                "-m",
+                f"Auto-commit world progress {timestamp}",
+                "--",
+                *available_paths,
+            ]
+        )
         print("Committed changed world and player data.")
     elif staged.returncode == 0:
         print("No world or player-data changes to commit.")
     else:
         raise RuntimeError(f"git diff failed with status {staged.returncode}")
 
-    branch = os.environ.get("GITHUB_REF_NAME", "")
-    if not branch:
-        branch_result = run_git(["branch", "--show-current"])
-        branch = branch_result.stdout.strip()
-    if not branch:
-        raise RuntimeError("Cannot determine the branch to push world data to")
-
     for attempt in range(1, 4):
-        push = run_git(["push", "origin", f"HEAD:refs/heads/{branch}"], check=False)
+        push = run_git(["push", "origin", "HEAD:refs/heads/main"], check=False)
         if push.returncode == 0:
-            print(f"Committed and pushed world data to {branch}.")
+            print("Committed and pushed world data to main.")
             return True
 
         if attempt == 3:
             detail = push.stderr.strip() or push.stdout.strip()
             raise RuntimeError(f"Git push failed after {attempt} attempts: {detail}")
 
-        run_git(["fetch", "origin", branch])
+        run_git(["fetch", "origin", "main"])
         rebase = run_git(
-            ["rebase", "--autostash", "-X", "theirs", f"origin/{branch}"],
+            ["rebase", "--autostash", "origin/main"],
             check=False,
         )
         if rebase.returncode:
             run_git(["rebase", "--abort"], check=False)
             detail = rebase.stderr.strip() or rebase.stdout.strip()
-            raise RuntimeError(f"Cannot rebase world commit onto origin/{branch}: {detail}")
+            raise RuntimeError(f"Cannot rebase world commit onto origin/main: {detail}")
         time.sleep(2**attempt)
 
     raise RuntimeError("Git push retry limit reached")

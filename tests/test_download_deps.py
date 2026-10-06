@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 import hashlib
 import os
 import subprocess
@@ -8,9 +9,11 @@ import time
 import tomllib
 import unittest
 import zipfile
+from datetime import datetime
 from pathlib import Path
 
 from scripts import download_deps
+from scripts import persist_world
 
 
 class BedrockRuntimeTests(unittest.TestCase):
@@ -115,15 +118,23 @@ class BedrockRuntimeTests(unittest.TestCase):
         self.assertNotIn("@event_handler", fun_source)
 
         launcher = (root / "server" / "start.sh").read_text(encoding="utf-8")
-        self.assertNotIn("server/worlds", launcher)
-        self.assertNotIn("server/world/", launcher)
+        self.assertIn("trap persist_world_on_exit EXIT", launcher)
         persistence = (root / "scripts" / "persist_world.py").read_text(encoding="utf-8")
-        self.assertNotIn('"server/worlds"', persistence)
-        self.assertNotIn('"server/world/"', persistence)
+        self.assertIn('"server/world"', persistence)
+        self.assertIn('"server/worlds"', persistence)
         workflow = (root / ".github" / "workflows" / "minecraft.yml").read_text(
             encoding="utf-8"
         )
         workflow_paths = {line.strip() for line in workflow.splitlines()}
+        self.assertIn("server/world", persistence)
+        self.assertIn("server/worlds", persistence)
+        self.assertIn("Auto-commit world progress", persistence)
+        self.assertIn('"HEAD:refs/heads/main"', persistence)
+        watchdog = (root / "server" / "watchdog.sh").read_text(encoding="utf-8")
+        self.assertIn('WORLD_SYNC_INTERVAL_SECONDS="${WORLD_SYNC_INTERVAL_SECONDS:-3600}"', watchdog)
+        self.assertIn("trap cleanup EXIT", watchdog)
+        self.assertIn("trap persist_world_on_exit EXIT", launcher)
+        self.assertIn("python3 scripts/persist_world.py", workflow)
         self.assertNotIn("server/worlds", workflow_paths)
         self.assertNotIn("server/world/", workflow_paths)
 
@@ -250,6 +261,48 @@ class BedrockRuntimeTests(unittest.TestCase):
         )
         self.assertIn("actor.remove()", duels_source)
 
+        duels_tree = ast.parse(duels_source)
+        arena_constants = [
+            node
+            for node in duels_tree.body
+            if isinstance(node, ast.Assign)
+            and any(
+                isinstance(target, ast.Name) and target.id.startswith("ARENA_")
+                for target in node.targets
+            )
+        ]
+        blueprint_function = next(
+            node
+            for node in ast.walk(duels_tree)
+            if isinstance(node, ast.FunctionDef) and node.name == "_arena_blueprint"
+        )
+        blueprint_function.decorator_list = []
+        blueprint_module = ast.Module(
+            body=[*arena_constants, blueprint_function],
+            type_ignores=[],
+        )
+        namespace = {}
+        exec(compile(blueprint_module, "<arena-blueprint-test>", "exec"), namespace)
+        blueprint = namespace["_arena_blueprint"]()
+        self.assertTrue(blueprint)
+        self.assertTrue(
+            all(
+                -11 <= x <= 11 and 150 <= y <= 155 and 989 <= z <= 1011
+                for x, y, z in blueprint
+            )
+        )
+        self.assertEqual(
+            (
+                min(x for x, _, _ in blueprint),
+                max(x for x, _, _ in blueprint),
+                min(y for _, y, _ in blueprint),
+                max(y for _, y, _ in blueprint),
+                min(z for _, _, z in blueprint),
+                max(z for _, _, z in blueprint),
+            ),
+            (-11, 11, 150, 155, 989, 1011),
+        )
+
         claims_source = (
             root / "server" / "plugins" / "land_claims" / "src" / "land_claims" / "__init__.py"
         ).read_text(encoding="utf-8")
@@ -283,6 +336,118 @@ class BedrockRuntimeTests(unittest.TestCase):
             archive.writestr("bedrock_server", executable)
             archive.writestr("server.properties", "server-port=19132\n")
         return hashlib.sha256(archive_path.read_bytes()).hexdigest()
+
+    def test_world_sync_commits_only_persisted_paths_to_main(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            remote = root / "origin.git"
+            worktree = root / "worktree"
+            subprocess.run(
+                ["git", "init", "--bare", "--initial-branch=main", str(remote)],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            worktree.mkdir()
+            subprocess.run(
+                ["git", "init", "--initial-branch=main"],
+                cwd=worktree,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            for key, value in (
+                ("user.name", "Test"),
+                ("user.email", "test@example.invalid"),
+            ):
+                subprocess.run(
+                    ["git", "config", key, value],
+                    cwd=worktree,
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                )
+            (worktree / "README").write_text("initial\n", encoding="utf-8")
+            subprocess.run(
+                ["git", "add", "README"],
+                cwd=worktree,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            subprocess.run(
+                ["git", "commit", "-m", "Initial commit"],
+                cwd=worktree,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            subprocess.run(
+                ["git", "remote", "add", "origin", str(remote)],
+                cwd=worktree,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            subprocess.run(
+                ["git", "push", "-u", "origin", "main"],
+                cwd=worktree,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            (worktree / ".gitignore").write_text("server/world/\n", encoding="utf-8")
+            (worktree / "server" / "world").mkdir(parents=True)
+            (worktree / "server" / "world" / "level.dat").write_bytes(b"world")
+            (worktree / "unrelated.txt").write_text("keep staged\n", encoding="utf-8")
+            subprocess.run(
+                ["git", "add", ".gitignore", "unrelated.txt"],
+                cwd=worktree,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+
+            previous_root = persist_world.ROOT
+            persist_world.ROOT = worktree
+            try:
+                self.assertTrue(persist_world.commit_and_push())
+            finally:
+                persist_world.ROOT = previous_root
+
+            message = subprocess.run(
+                ["git", "--git-dir", str(remote), "show", "-s", "--format=%s", "main"],
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.strip()
+            self.assertTrue(message.startswith("Auto-commit world progress "))
+            timestamp = message.removeprefix("Auto-commit world progress ")
+            self.assertIsNotNone(datetime.fromisoformat(timestamp).tzinfo)
+            changed_paths = subprocess.run(
+                [
+                    "git",
+                    "--git-dir",
+                    str(remote),
+                    "diff-tree",
+                    "--no-commit-id",
+                    "--name-only",
+                    "-r",
+                    "main",
+                ],
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.splitlines()
+            self.assertEqual(changed_paths, ["server/world/level.dat"])
+            remaining_staged = subprocess.run(
+                ["git", "diff", "--cached", "--name-only"],
+                cwd=worktree,
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.splitlines()
+            self.assertEqual(remaining_staged, [".gitignore", "unrelated.txt"])
 
     def test_install_replaces_runtime_preserving_worlds_and_config(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
@@ -433,7 +598,9 @@ class BedrockRuntimeTests(unittest.TestCase):
             counter = root / "launch-count"
             running = root / "server-running"
             output = root / "watchdog-stdout.log"
+            persister = root / "persist-world.py"
             config.write_text("config = true\n", encoding="utf-8")
+            persister.write_text("raise SystemExit(0)\n", encoding="utf-8")
             frpc.write_text(
                 "#!/usr/bin/env python3\n"
                 "import signal, time\n"
@@ -475,6 +642,7 @@ class BedrockRuntimeTests(unittest.TestCase):
                 "FRPC_CONFIG": str(config),
                 "FRPC_LOG": str(frpc_log),
                 "SERVER_LAUNCHER": str(launcher),
+                "WORLD_PERSIST_SCRIPT": str(persister),
                 "SERVER_LOG": str(server_log),
                 "WATCHDOG_LOG": str(watchdog_log),
                 "WATCHDOG_INTERVAL_SECONDS": "1",

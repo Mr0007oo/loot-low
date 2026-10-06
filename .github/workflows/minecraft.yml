@@ -146,6 +146,7 @@ jobs:
           LOG_TAIL_PID=$!
 
           cleanup() {
+            local exit_status=$?
             trap - EXIT INT TERM
             if [[ -n "${WATCHDOG_PID:-}" ]] && kill -0 "$WATCHDOG_PID" 2>/dev/null; then
               kill -TERM "$WATCHDOG_PID" 2>/dev/null || true
@@ -159,6 +160,13 @@ jobs:
               kill -TERM "$LOG_TAIL_PID" 2>/dev/null || true
               wait "$LOG_TAIL_PID" 2>/dev/null || true
             fi
+            if ! python3 scripts/persist_world.py; then
+              echo "ERROR: World persistence failed during workflow shutdown." >&2
+              if [[ "$exit_status" -eq 0 ]]; then
+                exit_status=1
+              fi
+            fi
+            exit "$exit_status"
           }
           trap cleanup EXIT
           trap 'exit 143' INT TERM
@@ -222,6 +230,6 @@ jobs:
           fi
           exit "$server_status"
 
-      - name: Persist Bedrock world and player data
+      - name: Persist world data to main
         if: always()
         run: python3 scripts/persist_world.py

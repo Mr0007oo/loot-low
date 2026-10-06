@@ -142,14 +142,15 @@ class LandClaimsPlugin(Plugin):
         args: list[str],
     ) -> None:
         command = "trust" if trust else "untrust"
-        if len(args) != 1:
+        target_name = " ".join(args).strip()
+        if not target_name:
             player.send_message(f"Error: Usage: /{command} <player>")
             return
         claim = self.claims.get(key)
         if claim is None or claim["owner"] != str(player.unique_id):
             player.send_message("Error: You must own this chunk to manage its trusted players.")
             return
-        target = self.server.get_player(args[0])
+        target = self.server.get_player(target_name)
         if target is None:
             player.send_message("Error: That player must be online.")
             return

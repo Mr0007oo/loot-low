@@ -59,6 +59,9 @@ in-memory portable bag; use `/backpack store <inventory_slot> <bag_slot>` and
 `/backpack take <bag_slot>` to move items. Backpacks do not persist across
 server restarts.
 
+The `endstone-pvp-duels` package builds a sky arena centered at Z=1000. Its
+platform and walls are limited to X=-11..11, Y=150..155, and Z=989..1011.
+
 The `endstone-land-claims` package adds `/claim`, `/unclaim`, `/trust <player>`,
 and `/untrust <player>`. Claims cover the current 16-by-16 chunk and are saved
 as JSON in the plugin's data folder. Block breaking and placement are denied in
@@ -88,8 +91,11 @@ loaded by the Bedrock server and are not automatically converted. Back up or
 convert any world you want to keep before using a Bedrock-compatible world
 converter.
 
-The workflow restores cached Bedrock world and access data and commits it back
-to the current branch after the server stops. The Endstone runtime and
-generated virtual environment are downloaded on demand and are not committed.
-The launch and CI validation steps do not clear, delete, or address the separate
-`server/worlds/` or `server/world/` directories.
+The workflow preserves Bedrock world and access data and pushes world progress
+to `main` hourly and after a graceful shutdown or workflow cancellation. The
+sync also includes the explicitly tracked `server/world/` and `server/worlds/`
+directories when present; transient lock and temporary files are excluded.
+Only those world paths, the active Bedrock world, and Bedrock access files are
+staged for persistence.
+The Endstone runtime and generated virtual environment are downloaded on
+demand and are not committed.

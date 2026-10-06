@@ -21,10 +21,10 @@ from endstone.plugin import Plugin
 ARENA_X = 0.0
 ARENA_Y = 150.0
 ARENA_Z = 1_000.0
-ARENA_FLOOR_MIN_X = -10
-ARENA_FLOOR_MAX_X = 10
-ARENA_FLOOR_MIN_Z = 990
-ARENA_FLOOR_MAX_Z = 1_010
+ARENA_FLOOR_MIN_X = -11
+ARENA_FLOOR_MAX_X = 11
+ARENA_FLOOR_MIN_Z = 989
+ARENA_FLOOR_MAX_Z = 1_011
 ARENA_SPAWN_Z_OFFSET = 7.0
 ARENA_MIN_X = -11
 ARENA_MAX_X = 11
@@ -121,10 +121,11 @@ class PvPDuelsPlugin(Plugin):
             return True
 
         if command.name == "pvp":
-            if len(args) != 1:
+            target_name = " ".join(args).strip()
+            if not target_name:
                 sender.send_message("Error: Usage: /pvp <player_name>")
                 return True
-            self._show_kit_selection(sender, args[0])
+            self._show_kit_selection(sender, target_name)
         elif command.name == "pvpaccept":
             if args:
                 sender.send_message("Error: Usage: /pvpaccept")

@@ -3,12 +3,16 @@
 
 from __future__ import annotations
 
+import argparse
 import fcntl
 import hashlib
+import io
 import os
 import shutil
 import subprocess
 import sys
+import tarfile
+import tempfile
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -43,6 +47,74 @@ def run_git(arguments: list[str], *, check: bool = True) -> subprocess.Completed
     return result
 
 
+def restore_world_paths(commit_ref: str) -> list[str]:
+    resolved = run_git(["rev-parse", "--verify", f"{commit_ref}^{{commit}}"], check=False)
+    if resolved.returncode:
+        fetch = run_git(["fetch", "origin", commit_ref], check=False)
+        if fetch.returncode:
+            detail = fetch.stderr.strip() or fetch.stdout.strip()
+            raise RuntimeError(
+                f"Cannot find recovery commit {commit_ref} locally or fetch it from origin: {detail}"
+            )
+        resolved = run_git(["rev-parse", "--verify", f"{commit_ref}^{{commit}}"], check=False)
+        if resolved.returncode:
+            raise RuntimeError(f"Fetched recovery ref {commit_ref} is not a commit")
+
+    commit = resolved.stdout.strip()
+    archive = subprocess.run(
+        ["git", "archive", "--format=tar", commit, "--", "server/world", "server/worlds"],
+        cwd=ROOT,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    if archive.returncode:
+        detail = archive.stderr.decode(errors="replace").strip()
+        raise RuntimeError(f"Cannot read world data from {commit}: {detail}")
+
+    restored: list[str] = []
+    with tempfile.TemporaryDirectory(prefix="loot-low-world-recovery-") as temp_dir:
+        extracted_root = Path(temp_dir)
+        with tarfile.open(fileobj=io.BytesIO(archive.stdout), mode="r:") as bundle:
+            members = bundle.getmembers()
+            allowed_roots = {"server/world", "server/worlds"}
+            for member in members:
+                member_path = Path(member.name)
+                if (
+                    member_path.is_absolute()
+                    or ".." in member_path.parts
+                    or not (
+                        member.name == "server"
+                        or any(
+                            member.name == root or member.name.startswith(f"{root}/")
+                            for root in allowed_roots
+                        )
+                    )
+                ):
+                    raise RuntimeError(
+                        f"Recovery commit {commit} contains an unexpected path: {member.name}"
+                    )
+            bundle.extractall(extracted_root, filter="data")
+
+        for relative_path in ("server/world", "server/worlds"):
+            source = extracted_root / relative_path
+            destination = ROOT / relative_path
+            if not source.exists():
+                continue
+            if destination.exists():
+                print(f"Preserving existing {relative_path}; recovery will not overwrite it.")
+                continue
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copytree(source, destination)
+            restored.append(relative_path)
+
+    if restored:
+        print(f"Restored missing world directories from {commit}: {', '.join(restored)}")
+    else:
+        print(f"No world directories needed restoring from {commit}.")
+    return restored
+
+
 def commit_and_push() -> bool:
     available_paths = [path for path in PERSIST_PATHS if (ROOT / path).exists()]
     if not available_paths:
@@ -71,25 +143,38 @@ def commit_and_push() -> bool:
     else:
         raise RuntimeError(f"git diff failed with status {staged.returncode}")
 
-    for attempt in range(1, 4):
+    for attempt in range(1, 6):
         push = run_git(["push", "origin", "HEAD:refs/heads/main"], check=False)
         if push.returncode == 0:
             print("Committed and pushed world data to main.")
             return True
 
-        if attempt == 3:
+        if attempt == 5:
             detail = push.stderr.strip() or push.stdout.strip()
             raise RuntimeError(f"Git push failed after {attempt} attempts: {detail}")
 
         run_git(["fetch", "origin", "main"])
-        rebase = run_git(
-            ["rebase", "--autostash", "origin/main"],
+        remote_is_ancestor = run_git(
+            ["merge-base", "--is-ancestor", "origin/main", "HEAD"],
             check=False,
         )
-        if rebase.returncode:
-            run_git(["rebase", "--abort"], check=False)
-            detail = rebase.stderr.strip() or rebase.stdout.strip()
-            raise RuntimeError(f"Cannot rebase world commit onto origin/main: {detail}")
+        if remote_is_ancestor.returncode == 0:
+            detail = push.stderr.strip() or push.stdout.strip()
+            raise RuntimeError(
+                f"Push to origin/main failed without a concurrent main update: {detail}"
+            )
+        if remote_is_ancestor.returncode != 1:
+            raise RuntimeError(
+                "Cannot determine whether origin/main is already included in the local commit"
+            )
+        merge = run_git(
+            ["merge", "--no-edit", "-X", "ours", "origin/main"],
+            check=False,
+        )
+        if merge.returncode:
+            run_git(["merge", "--abort"], check=False)
+            detail = merge.stderr.strip() or merge.stdout.strip()
+            raise RuntimeError(f"Cannot merge origin/main while preserving local world data: {detail}")
         time.sleep(2**attempt)
 
     raise RuntimeError("Git push retry limit reached")
@@ -105,12 +190,31 @@ def sync_runtime_access_files() -> None:
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--restore-only",
+        metavar="COMMIT",
+        help="restore server/world and server/worlds only when missing, from this commit",
+    )
+    args = parser.parse_args()
     root_key = hashlib.sha256(str(ROOT).encode()).hexdigest()[:16]
     lock_path = Path("/tmp") / f"loot-low-world-persist-{root_key}.lock"
     try:
         with lock_path.open("w") as lock_file:
             fcntl.flock(lock_file, fcntl.LOCK_EX)
+            if args.restore_only:
+                restore_world_paths(args.restore_only)
+                return 0
             sync_runtime_access_files()
+            recovery_commit = os.environ.get("WORLD_RECOVERY_COMMIT")
+            if recovery_commit:
+                try:
+                    restore_world_paths(recovery_commit)
+                except RuntimeError as exc:
+                    print(
+                        f"WARNING: {exc}. Existing workspace world data was left untouched.",
+                        file=sys.stderr,
+                    )
             commit_and_push()
     except (OSError, RuntimeError, ValueError) as exc:
         print(f"ERROR: world persistence failed: {exc}", file=sys.stderr)

@@ -3,6 +3,7 @@ from __future__ import annotations
 import ast
 import hashlib
 import os
+import shutil
 import subprocess
 import tempfile
 import time
@@ -130,11 +131,15 @@ class BedrockRuntimeTests(unittest.TestCase):
         self.assertIn("server/worlds", persistence)
         self.assertIn("Auto-commit world progress", persistence)
         self.assertIn('"HEAD:refs/heads/main"', persistence)
+        self.assertIn('["merge", "--no-edit", "-X", "ours", "origin/main"]', persistence)
+        self.assertNotIn("git rebase", persistence)
         watchdog = (root / "server" / "watchdog.sh").read_text(encoding="utf-8")
         self.assertIn('WORLD_SYNC_INTERVAL_SECONDS="${WORLD_SYNC_INTERVAL_SECONDS:-3600}"', watchdog)
         self.assertIn("trap cleanup EXIT", watchdog)
         self.assertIn("trap persist_world_on_exit EXIT", launcher)
         self.assertIn("python3 scripts/persist_world.py", workflow)
+        self.assertIn("vars.WORLD_RECOVERY_COMMIT", workflow)
+        self.assertIn("--restore-only", workflow)
         self.assertNotIn("server/worlds", workflow_paths)
         self.assertNotIn("server/world/", workflow_paths)
 
@@ -448,6 +453,231 @@ class BedrockRuntimeTests(unittest.TestCase):
                 text=True,
             ).stdout.splitlines()
             self.assertEqual(remaining_staged, [".gitignore", "unrelated.txt"])
+
+    def test_world_sync_merges_concurrent_main_and_keeps_local_world_progress(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            remote = root / "origin.git"
+            worktree = root / "worktree"
+            concurrent = root / "concurrent"
+            subprocess.run(
+                ["git", "init", "--bare", "--initial-branch=main", str(remote)],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            worktree.mkdir()
+            subprocess.run(
+                ["git", "init", "--initial-branch=main"],
+                cwd=worktree,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            for key, value in (
+                ("user.name", "Test"),
+                ("user.email", "test@example.invalid"),
+            ):
+                subprocess.run(
+                    ["git", "config", key, value],
+                    cwd=worktree,
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                )
+            world_file = worktree / "server" / "world" / "level.dat"
+            world_file.parent.mkdir(parents=True)
+            world_file.write_text("base world\n", encoding="utf-8")
+            (worktree / "README").write_text("base\n", encoding="utf-8")
+            subprocess.run(
+                ["git", "add", "README", "server/world/level.dat"],
+                cwd=worktree,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            subprocess.run(
+                ["git", "commit", "-m", "Initial commit"],
+                cwd=worktree,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            subprocess.run(
+                ["git", "remote", "add", "origin", str(remote)],
+                cwd=worktree,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            subprocess.run(
+                ["git", "push", "-u", "origin", "main"],
+                cwd=worktree,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            subprocess.run(
+                ["git", "clone", str(remote), str(concurrent)],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            for key, value in (
+                ("user.name", "Concurrent"),
+                ("user.email", "concurrent@example.invalid"),
+            ):
+                subprocess.run(
+                    ["git", "config", key, value],
+                    cwd=concurrent,
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                )
+
+            world_file.write_text("local player progress\n", encoding="utf-8")
+            (concurrent / "README").write_text("remote workflow update\n", encoding="utf-8")
+            (concurrent / "server" / "world" / "level.dat").write_text(
+                "remote world snapshot\n",
+                encoding="utf-8",
+            )
+            subprocess.run(
+                ["git", "add", "README", "server/world/level.dat"],
+                cwd=concurrent,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            subprocess.run(
+                ["git", "commit", "-m", "Concurrent main update"],
+                cwd=concurrent,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+
+            original_run_git = persist_world.run_git
+            publish_concurrent_update = True
+
+            def run_git_with_concurrent_push(
+                arguments: list[str],
+                *,
+                check: bool = True,
+            ) -> subprocess.CompletedProcess[str]:
+                nonlocal publish_concurrent_update
+                if arguments[:1] == ["push"] and publish_concurrent_update:
+                    publish_concurrent_update = False
+                    subprocess.run(
+                        ["git", "push", "origin", "main"],
+                        cwd=concurrent,
+                        check=True,
+                        capture_output=True,
+                        text=True,
+                    )
+                return original_run_git(arguments, check=check)
+
+            previous_root = persist_world.ROOT
+            persist_world.ROOT = worktree
+            persist_world.run_git = run_git_with_concurrent_push
+            try:
+                self.assertTrue(persist_world.commit_and_push())
+            finally:
+                persist_world.ROOT = previous_root
+                persist_world.run_git = original_run_git
+
+            remote_readme = subprocess.run(
+                ["git", "--git-dir", str(remote), "show", "main:README"],
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout
+            remote_world = subprocess.run(
+                ["git", "--git-dir", str(remote), "show", "main:server/world/level.dat"],
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout
+            self.assertEqual(remote_readme, "remote workflow update\n")
+            self.assertEqual(remote_world, "local player progress\n")
+            parents = subprocess.run(
+                ["git", "--git-dir", str(remote), "rev-list", "--parents", "-n", "1", "main"],
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.split()
+            self.assertEqual(len(parents), 3)
+
+    def test_recovery_restores_only_missing_world_directories(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            (root / "server" / "world").mkdir(parents=True)
+            (root / "server" / "world" / "level.dat").write_text(
+                "recovered world\n",
+                encoding="utf-8",
+            )
+            (root / "server" / "worlds").mkdir(parents=True)
+            (root / "server" / "worlds" / "level.dat").write_text(
+                "recovered bedrock world\n",
+                encoding="utf-8",
+            )
+            subprocess.run(
+                ["git", "init", "--initial-branch=main"],
+                cwd=root,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            for key, value in (
+                ("user.name", "Test"),
+                ("user.email", "test@example.invalid"),
+            ):
+                subprocess.run(
+                    ["git", "config", key, value],
+                    cwd=root,
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                )
+            subprocess.run(
+                ["git", "add", "server/world", "server/worlds"],
+                cwd=root,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            subprocess.run(
+                ["git", "commit", "-m", "World recovery snapshot"],
+                cwd=root,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            commit = subprocess.run(
+                ["git", "rev-parse", "HEAD"],
+                cwd=root,
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.strip()
+            shutil.rmtree(root / "server" / "world")
+            (root / "server" / "worlds" / "level.dat").write_text(
+                "newer active world\n",
+                encoding="utf-8",
+            )
+            previous_root = persist_world.ROOT
+            persist_world.ROOT = root
+            try:
+                self.assertEqual(persist_world.restore_world_paths(commit), ["server/world"])
+            finally:
+                persist_world.ROOT = previous_root
+            self.assertEqual(
+                (root / "server" / "world" / "level.dat").read_text(encoding="utf-8"),
+                "recovered world\n",
+            )
+            self.assertEqual(
+                (root / "server" / "worlds" / "level.dat").read_text(encoding="utf-8"),
+                "newer active world\n",
+            )
 
     def test_install_replaces_runtime_preserving_worlds_and_config(self) -> None:
         with tempfile.TemporaryDirectory() as temp:

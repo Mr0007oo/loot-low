@@ -99,3 +99,7 @@ Only those world paths, the active Bedrock world, and Bedrock access files are
 staged for persistence.
 The Endstone runtime and generated virtual environment are downloaded on
 demand and are not committed.
+To recover a missing legacy world directory from a Git commit, set the
+repository variable `WORLD_RECOVERY_COMMIT` (for example, `d34607d`). Recovery
+restores only a missing `server/world/` or `server/worlds/` directory and never
+overwrites an existing workspace copy.

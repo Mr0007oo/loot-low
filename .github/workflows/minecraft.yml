@@ -22,6 +22,7 @@ jobs:
     env:
       FRP_SERVER_IP: ${{ secrets.FRP_SERVER_IP }}
       FRP_TOKEN: ${{ secrets.FRP_TOKEN }}
+      WORLD_RECOVERY_COMMIT: ${{ vars.WORLD_RECOVERY_COMMIT }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -96,6 +97,10 @@ jobs:
 
       - name: Verify pinned Bedrock runtime before startup
         run: python3 scripts/download_deps.py --check
+
+      - name: Restore missing legacy world directories
+        if: ${{ vars.WORLD_RECOVERY_COMMIT != '' }}
+        run: python3 scripts/persist_world.py --restore-only "$WORLD_RECOVERY_COMMIT"
 
       - name: Assert native-only server artifacts
         run: |

@@ -1,4 +1,5 @@
 from endstone.command import Command, CommandSender
+from endstone.event import PlayerJoinEvent, event_handler
 from endstone.plugin import Plugin
 
 
@@ -22,7 +23,19 @@ class ServerUtilsPlugin(Plugin):
     }
 
     def on_enable(self) -> None:
+        self.register_events(self)
+        self._enable_show_coordinates()
         self.logger.info("Server utilities enabled.")
+
+    @event_handler
+    def on_player_join(self, event: PlayerJoinEvent) -> None:
+        self._enable_show_coordinates()
+
+    def _enable_show_coordinates(self) -> None:
+        self.server.dispatch_command(
+            self.server.command_sender,
+            "gamerule showcoordinates true",
+        )
 
     def on_command(self, sender: CommandSender, command: Command, args: list[str]) -> bool:
         sender.send_message(

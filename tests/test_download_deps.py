@@ -69,7 +69,10 @@ class BedrockRuntimeTests(unittest.TestCase):
         ).read_text(encoding="utf-8")
         self.assertIn('api_version = "0.11"', plugin_source)
         self.assertIn('"serverinfo"', plugin_source)
-        self.assertNotIn("@event_handler", plugin_source)
+        self.assertIn("from endstone.event import PlayerJoinEvent, event_handler", plugin_source)
+        self.assertIn("self.register_events(self)", plugin_source)
+        self.assertIn('"gamerule showcoordinates true"', plugin_source)
+        self.assertIn("def on_player_join(self, event: PlayerJoinEvent)", plugin_source)
 
         workflow = (root / ".github" / "workflows" / "minecraft.yml").read_text(
             encoding="utf-8"

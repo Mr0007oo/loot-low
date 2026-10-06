@@ -129,7 +129,7 @@ class BedrockRuntimeTests(unittest.TestCase):
         workflow_paths = {line.strip() for line in workflow.splitlines()}
         self.assertIn("server/world", persistence)
         self.assertIn("server/worlds", persistence)
-        self.assertIn("Auto-commit world progress", persistence)
+        self.assertIn("Persist world progress [skip ci]", persistence)
         self.assertIn('"HEAD:refs/heads/main"', persistence)
         self.assertIn('["merge", "--no-edit", "-X", "ours", "origin/main"]', persistence)
         self.assertNotIn("git rebase", persistence)
@@ -138,6 +138,9 @@ class BedrockRuntimeTests(unittest.TestCase):
         self.assertIn("trap cleanup EXIT", watchdog)
         self.assertIn("trap persist_world_on_exit EXIT", launcher)
         self.assertIn("python3 scripts/persist_world.py", workflow)
+        self.assertIn("persist-credentials: true", workflow)
+        self.assertIn("token: ${{ github.token }}", workflow)
+        self.assertIn("if: ${{ always() }}", workflow)
         self.assertIn("vars.WORLD_RECOVERY_COMMIT", workflow)
         self.assertIn("--restore-only", workflow)
         self.assertNotIn("server/worlds", workflow_paths)
@@ -426,8 +429,8 @@ class BedrockRuntimeTests(unittest.TestCase):
                 capture_output=True,
                 text=True,
             ).stdout.strip()
-            self.assertTrue(message.startswith("Auto-commit world progress "))
-            timestamp = message.removeprefix("Auto-commit world progress ")
+            self.assertTrue(message.startswith("Persist world progress [skip ci] "))
+            timestamp = message.removeprefix("Persist world progress [skip ci] ")
             self.assertIsNotNone(datetime.fromisoformat(timestamp).tzinfo)
             changed_paths = subprocess.run(
                 [

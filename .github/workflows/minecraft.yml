@@ -28,6 +28,8 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          persist-credentials: true
+          token: ${{ github.token }}
 
       - name: Set up Python 3.13
         uses: actions/setup-python@v5
@@ -236,5 +238,6 @@ jobs:
           exit "$server_status"
 
       - name: Persist world data to main
-        if: always()
+        if: ${{ always() }}
+        timeout-minutes: 10
         run: python3 scripts/persist_world.py

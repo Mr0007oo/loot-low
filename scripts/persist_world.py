@@ -132,7 +132,7 @@ def commit_and_push() -> bool:
                 "commit",
                 "--only",
                 "-m",
-                f"Auto-commit world progress {timestamp}",
+                f"Persist world progress [skip ci] {timestamp}",
                 "--",
                 *available_paths,
             ]
@@ -144,6 +144,34 @@ def commit_and_push() -> bool:
         raise RuntimeError(f"git diff failed with status {staged.returncode}")
 
     for attempt in range(1, 6):
+        fetch = run_git(
+            ["fetch", "origin", "+refs/heads/main:refs/remotes/origin/main"],
+            check=False,
+        )
+        if fetch.returncode:
+            detail = fetch.stderr.strip() or fetch.stdout.strip()
+            raise RuntimeError(f"Cannot fetch origin/main before world push: {detail}")
+
+        remote_is_ancestor = run_git(
+            ["merge-base", "--is-ancestor", "origin/main", "HEAD"],
+            check=False,
+        )
+        if remote_is_ancestor.returncode == 1:
+            merge = run_git(
+                ["merge", "--no-edit", "-X", "ours", "origin/main"],
+                check=False,
+            )
+            if merge.returncode:
+                run_git(["merge", "--abort"], check=False)
+                detail = merge.stderr.strip() or merge.stdout.strip()
+                raise RuntimeError(
+                    f"Cannot merge origin/main while preserving local world data: {detail}"
+                )
+        elif remote_is_ancestor.returncode != 0:
+            raise RuntimeError(
+                "Cannot determine whether origin/main is already included in the local commit"
+            )
+
         push = run_git(["push", "origin", "HEAD:refs/heads/main"], check=False)
         if push.returncode == 0:
             print("Committed and pushed world data to main.")
@@ -152,29 +180,6 @@ def commit_and_push() -> bool:
         if attempt == 5:
             detail = push.stderr.strip() or push.stdout.strip()
             raise RuntimeError(f"Git push failed after {attempt} attempts: {detail}")
-
-        run_git(["fetch", "origin", "main"])
-        remote_is_ancestor = run_git(
-            ["merge-base", "--is-ancestor", "origin/main", "HEAD"],
-            check=False,
-        )
-        if remote_is_ancestor.returncode == 0:
-            detail = push.stderr.strip() or push.stdout.strip()
-            raise RuntimeError(
-                f"Push to origin/main failed without a concurrent main update: {detail}"
-            )
-        if remote_is_ancestor.returncode != 1:
-            raise RuntimeError(
-                "Cannot determine whether origin/main is already included in the local commit"
-            )
-        merge = run_git(
-            ["merge", "--no-edit", "-X", "ours", "origin/main"],
-            check=False,
-        )
-        if merge.returncode:
-            run_git(["merge", "--abort"], check=False)
-            detail = merge.stderr.strip() or merge.stdout.strip()
-            raise RuntimeError(f"Cannot merge origin/main while preserving local world data: {detail}")
         time.sleep(2**attempt)
 
     raise RuntimeError("Git push retry limit reached")

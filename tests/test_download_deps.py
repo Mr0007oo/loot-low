@@ -44,12 +44,13 @@ class BedrockRuntimeTests(unittest.TestCase):
 
         launcher = (root / "server" / "start.sh").read_text(encoding="utf-8")
         self.assertIn("pip uninstall", launcher)
-        self.assertEqual(launcher.count("pip install"), 7)
+        self.assertEqual(launcher.count("pip install"), 8)
         self.assertIn('pip install --disable-pip-version-check "$wheel"', launcher)
         self.assertIn('"$SERVER_DIR/plugins/server_utils"', launcher)
         self.assertIn('"$SERVER_DIR/plugins/fun_plugins"', launcher)
         self.assertIn('"$SERVER_DIR/plugins/vein_miner"', launcher)
         self.assertIn('"$SERVER_DIR/plugins/container_plugins"', launcher)
+        self.assertIn('"$SERVER_DIR/plugins/pvp_duels"', launcher)
         self.assertIn('"$SERVER_DIR/plugins/land_claims"', launcher)
         self.assertIn('"$SERVER_DIR/plugins/world_edit"', launcher)
         self.assertIn("exec {server_stdin_fd}< <(tail -f /dev/null)", launcher)
@@ -85,7 +86,9 @@ class BedrockRuntimeTests(unittest.TestCase):
         self.assertIn("Container commands enabled.", workflow)
         self.assertIn("Land Claims enabled", workflow)
         self.assertIn("World Edit enabled (512-block fill limit).", workflow)
-        for plugin in ("container_plugins", "land_claims", "world_edit"):
+        self.assertIn("PvP Duels enabled", workflow)
+        self.assertIn("server/plugins/pvp_duels/src", workflow)
+        for plugin in ("container_plugins", "pvp_duels", "land_claims", "world_edit"):
             self.assertIn(f"server/plugins/{plugin}", workflow)
 
         fun_manifest = root / "server" / "plugins" / "fun_plugins" / "pyproject.toml"
@@ -153,6 +156,12 @@ class BedrockRuntimeTests(unittest.TestCase):
                 "container_plugins:ContainerPlugins",
             ),
             (
+                "pvp_duels",
+                "endstone-pvp-duels",
+                "pvp-duels",
+                "pvp_duels:PvPDuelsPlugin",
+            ),
+            (
                 "land_claims",
                 "endstone-land-claims",
                 "land-claims",
@@ -201,6 +210,30 @@ class BedrockRuntimeTests(unittest.TestCase):
         self.assertIn("/ec store <inventory_slot> <ender_slot>", containers_source)
         self.assertIn("BACKPACK_SIZE = 27", containers_source)
         self.assertIn("self.backpacks:", containers_source)
+        self.assertIn("Your personal Ender Chest is available from anywhere.", containers_source)
+
+        duels_source = (
+            root / "server" / "plugins" / "pvp_duels" / "src" / "pvp_duels" / "__init__.py"
+        ).read_text(encoding="utf-8")
+        for command in ("pvp", "pvpaccept", "pvpdeny"):
+            self.assertIn(f'        "{command}": {{', duels_source)
+        self.assertIn("class PlayerBackup:", duels_source)
+        self.assertIn("self.player_backups: dict[UUID, PlayerBackup] = {}", duels_source)
+        self.assertIn(
+            "contents=tuple(self._copy_item(item) for item in inventory.contents)",
+            duels_source,
+        )
+        self.assertIn("inventory.item_in_off_hand = self._copy_item(backup.offhand)", duels_source)
+        self.assertIn("    PlayerDeathEvent,", duels_source)
+        self.assertIn("def on_player_death(self, event: PlayerDeathEvent)", duels_source)
+        self.assertIn("def on_player_quit(self, event: PlayerQuitEvent)", duels_source)
+        self.assertIn("def on_player_respawn(self, event: PlayerRespawnEvent)", duels_source)
+        self.assertIn("ActionForm(", duels_source)
+        self.assertIn('"Netherite Kit"', duels_source)
+        self.assertIn('"Crystal PvP Kit"', duels_source)
+        self.assertIn('"Archer Kit"', duels_source)
+        self.assertIn("ARENA_Z = 1_000.0", duels_source)
+        self.assertIn("actor.remove()", duels_source)
 
         claims_source = (
             root / "server" / "plugins" / "land_claims" / "src" / "land_claims" / "__init__.py"

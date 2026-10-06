@@ -30,6 +30,8 @@ fi
 "$SERVER_DIR/.venv/bin/python" -m pip install --disable-pip-version-check \
     "$SERVER_DIR/plugins/container_plugins"
 "$SERVER_DIR/.venv/bin/python" -m pip install --disable-pip-version-check \
+    "$SERVER_DIR/plugins/pvp_duels"
+"$SERVER_DIR/.venv/bin/python" -m pip install --disable-pip-version-check \
     "$SERVER_DIR/plugins/land_claims"
 "$SERVER_DIR/.venv/bin/python" -m pip install --disable-pip-version-check \
     "$SERVER_DIR/plugins/world_edit"

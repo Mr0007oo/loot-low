@@ -114,7 +114,10 @@ class ContainerPlugins(Plugin):
         player.send_form(
             ActionForm(
                 title="Ender Chest",
-                content="Access your Ender Chest from anywhere.",
+                content=(
+                    "Your personal Ender Chest is available from anywhere. "
+                    "Choose a graphical menu to move items in or out."
+                ),
             )
             .add_button(
                 "Withdraw an item",

@@ -21,8 +21,21 @@ from endstone.plugin import Plugin
 ARENA_X = 0.0
 ARENA_Y = 150.0
 ARENA_Z = 1_000.0
-ARENA_PLAYER_OFFSET = 3.0
+ARENA_FLOOR_MIN_X = -10
+ARENA_FLOOR_MAX_X = 10
+ARENA_FLOOR_MIN_Z = 990
+ARENA_FLOOR_MAX_Z = 1_010
+ARENA_SPAWN_Z_OFFSET = 7.0
+ARENA_MIN_X = -11
+ARENA_MAX_X = 11
+ARENA_MIN_Y = 150
+ARENA_MAX_Y = 155
+ARENA_MIN_Z = 989
+ARENA_MAX_Z = 1_011
 ARENA_CLEANUP_RADIUS = 64.0
+ARENA_FLOOR_BLOCK = "minecraft:smooth_stone"
+ARENA_WALL_BLOCK = "minecraft:glass"
+ARENA_ROOF_BLOCK = "minecraft:glass"
 KIT_NAMES = ("Netherite Kit", "Crystal PvP Kit", "Archer Kit")
 
 
@@ -88,9 +101,10 @@ class PvPDuelsPlugin(Plugin):
         self.pending_restores: set[UUID] = set()
         self.active_match: DuelMatch | None = None
         self.arena_dimension = self._find_overworld()
+        self._ensure_arena()
         self.register_events(self)
         self.logger.info(
-            f"PvP Duels enabled (prebuilt arena at {ARENA_X:g}, {ARENA_Y:g}, {ARENA_Z:g})."
+            f"PvP Duels enabled (sky arena at {ARENA_X:g}, {ARENA_Y:g}, {ARENA_Z:g})."
         )
 
     def on_disable(self) -> None:
@@ -273,6 +287,10 @@ class PvPDuelsPlugin(Plugin):
             target.send_message("Error: The overworld arena dimension is not available.")
             challenger.send_message("Error: The overworld arena dimension is not available.")
             return
+        if not self._ensure_arena():
+            target.send_message("Error: The sky arena is obstructed; the duel was not started.")
+            challenger.send_message("Error: The sky arena is obstructed; the duel was not started.")
+            return
         if self._is_busy(challenger.unique_id) or self._is_busy(target.unique_id):
             target.send_message("Error: You or the challenger already has an active duel.")
             return
@@ -291,17 +309,17 @@ class PvPDuelsPlugin(Plugin):
         match = DuelMatch(challenge, existing_item_ids)
         self.active_match = match
 
-        challenger_spawn = Location(
-            self.arena_dimension,
-            ARENA_X - ARENA_PLAYER_OFFSET,
-            ARENA_Y,
-            ARENA_Z,
-        )
         target_spawn = Location(
             self.arena_dimension,
-            ARENA_X + ARENA_PLAYER_OFFSET,
+            ARENA_X,
             ARENA_Y,
-            ARENA_Z,
+            ARENA_Z + ARENA_SPAWN_Z_OFFSET,
+        )
+        challenger_spawn = Location(
+            self.arena_dimension,
+            ARENA_X,
+            ARENA_Y,
+            ARENA_Z - ARENA_SPAWN_Z_OFFSET,
         )
         self._equip_loadout(challenger, challenger_loadout)
         self._equip_loadout(target, target_loadout)
@@ -560,6 +578,69 @@ class PvPDuelsPlugin(Plugin):
                 return dimension
         self.logger.error("PvP Duels could not find the overworld dimension.")
         return None
+
+    def _ensure_arena(self) -> bool:
+        if self.arena_dimension is None:
+            return False
+
+        blueprint = self._arena_blueprint()
+        for x, y, z in blueprint:
+            if not (
+                ARENA_MIN_X <= x <= ARENA_MAX_X
+                and ARENA_MIN_Y <= y <= ARENA_MAX_Y
+                and ARENA_MIN_Z <= z <= ARENA_MAX_Z
+            ):
+                self.logger.error(
+                    f"Refusing to build arena block outside approved bounds: {x}, {y}, {z}."
+                )
+                return False
+
+        for x in range(ARENA_MIN_X, ARENA_MAX_X + 1):
+            for y in range(ARENA_MIN_Y, ARENA_MAX_Y + 1):
+                for z in range(ARENA_MIN_Z, ARENA_MAX_Z + 1):
+                    block = self.arena_dimension.get_block_at(x, y, z)
+                    existing_type = block.type
+                    if ":" not in existing_type:
+                        existing_type = f"minecraft:{existing_type}"
+                    expected_type = blueprint.get((x, y, z))
+                    if existing_type != "minecraft:air" and existing_type != expected_type:
+                        self.logger.error(
+                            "Refusing to build PvP arena because a non-air block exists "
+                            f"inside its protected bounds at {x}, {y}, {z}."
+                        )
+                        return False
+
+        for (x, y, z), block_type in blueprint.items():
+            block = self.arena_dimension.get_block_at(x, y, z)
+            existing_type = block.type
+            if ":" not in existing_type:
+                existing_type = f"minecraft:{existing_type}"
+            if existing_type != block_type:
+                block.set_type(block_type, apply_physics=False)
+        return True
+
+    @staticmethod
+    def _arena_blueprint() -> dict[tuple[int, int, int], str]:
+        blueprint = {
+            (x, ARENA_MIN_Y, z): ARENA_FLOOR_BLOCK
+            for x in range(ARENA_FLOOR_MIN_X, ARENA_FLOOR_MAX_X + 1)
+            for z in range(ARENA_FLOOR_MIN_Z, ARENA_FLOOR_MAX_Z + 1)
+        }
+        for y in range(ARENA_MIN_Y + 1, ARENA_MAX_Y):
+            for x in range(ARENA_FLOOR_MIN_X, ARENA_FLOOR_MAX_X + 1):
+                blueprint[(x, y, ARENA_FLOOR_MIN_Z)] = ARENA_WALL_BLOCK
+                blueprint[(x, y, ARENA_FLOOR_MAX_Z)] = ARENA_WALL_BLOCK
+            for z in range(ARENA_FLOOR_MIN_Z + 1, ARENA_FLOOR_MAX_Z):
+                blueprint[(ARENA_FLOOR_MIN_X, y, z)] = ARENA_WALL_BLOCK
+                blueprint[(ARENA_FLOOR_MAX_X, y, z)] = ARENA_WALL_BLOCK
+        blueprint.update(
+            {
+                (x, ARENA_MAX_Y, z): ARENA_ROOF_BLOCK
+                for x in range(ARENA_FLOOR_MIN_X, ARENA_FLOOR_MAX_X + 1)
+                for z in range(ARENA_FLOOR_MIN_Z, ARENA_FLOOR_MAX_Z + 1)
+            }
+        )
+        return blueprint
 
     def _is_busy(self, player_id: UUID) -> bool:
         if player_id in self.player_backups:

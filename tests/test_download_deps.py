@@ -233,6 +233,21 @@ class BedrockRuntimeTests(unittest.TestCase):
         self.assertIn('"Crystal PvP Kit"', duels_source)
         self.assertIn('"Archer Kit"', duels_source)
         self.assertIn("ARENA_Z = 1_000.0", duels_source)
+        self.assertIn("ARENA_MIN_X = -11", duels_source)
+        self.assertIn("ARENA_MAX_X = 11", duels_source)
+        self.assertIn("ARENA_MIN_Y = 150", duels_source)
+        self.assertIn("ARENA_MAX_Y = 155", duels_source)
+        self.assertIn("ARENA_MIN_Z = 989", duels_source)
+        self.assertIn("ARENA_MAX_Z = 1_011", duels_source)
+        self.assertIn("self._ensure_arena()", duels_source)
+        self.assertIn("def _arena_blueprint()", duels_source)
+        self.assertIn("block.set_type(block_type, apply_physics=False)", duels_source)
+        self.assertIn("ARENA_Z - ARENA_SPAWN_Z_OFFSET", duels_source)
+        self.assertIn("ARENA_Z + ARENA_SPAWN_Z_OFFSET", duels_source)
+        self.assertIn(
+            "Refusing to build PvP arena because a non-air block exists",
+            duels_source,
+        )
         self.assertIn("actor.remove()", duels_source)
 
         claims_source = (

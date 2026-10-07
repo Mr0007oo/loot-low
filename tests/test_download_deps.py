@@ -116,11 +116,11 @@ class BedrockRuntimeTests(unittest.TestCase):
         self.assertIn("ROLL_MAX_SIDES = 1_000", fun_source)
         for command in ("sethome", "home", "tpa", "tpaccept", "tpdeny"):
             self.assertIn(f'        "{command}": {{', fun_source)
-        self.assertIn("self.homes = {}", fun_source)
+        self.assertIn("self.homes, self.waypoints = self._load_data()", fun_source)
         self.assertIn("self.tpa_requests = {}", fun_source)
         self.assertIn("sender.unique_id", fun_source)
         self.assertIn("sender.location", fun_source)
-        self.assertNotIn("@event_handler", fun_source)
+        self.assertIn("@event_handler", fun_source)
 
         launcher = (root / "server" / "start.sh").read_text(encoding="utf-8")
         self.assertIn("trap persist_world_on_exit EXIT", launcher)

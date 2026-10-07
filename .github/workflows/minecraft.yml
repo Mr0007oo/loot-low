@@ -71,6 +71,8 @@ jobs:
               "server-ip": "0.0.0.0",
               "allow-outdated-client": "true",
               "emit-server-telemetry": "false",
+              "enable-rcon": "true",
+              "rcon.port": "25575",
           }
           mismatches = {
               key: (properties.get(key), value)
@@ -141,9 +143,16 @@ jobs:
       - name: Start FRP and native Bedrock server
         id: run-server
         timeout-minutes: 330
+        env:
+          RCON_PASSWORD: ${{ secrets.RCON_PASSWORD }}
+          RCON_PORT: 25575
         shell: bash
         run: |
           set -uo pipefail
+          if [[ -z "$RCON_PASSWORD" || ${#RCON_PASSWORD} -lt 32 ]]; then
+            echo "ERROR: RCON_PASSWORD secret must contain at least 32 characters." >&2
+            exit 1
+          fi
           mkdir -p server/logs
           server_log="server/logs/server-session.log"
           watchdog_log="server/logs/watchdog.log"

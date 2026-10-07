@@ -36,6 +36,9 @@ class BedrockRuntimeTests(unittest.TestCase):
                     "server-ip",
                     "allow-outdated-client",
                     "emit-server-telemetry",
+                    "enable-rcon",
+                    "rcon.port",
+                    "rcon.password",
                 )
             },
             {
@@ -43,6 +46,9 @@ class BedrockRuntimeTests(unittest.TestCase):
                 "server-ip": "0.0.0.0",
                 "allow-outdated-client": "true",
                 "emit-server-telemetry": "false",
+                "enable-rcon": "true",
+                "rcon.port": "25575",
+                "rcon.password": "SET_AT_RUNTIME",
             },
         )
 

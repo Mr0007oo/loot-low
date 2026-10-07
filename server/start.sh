@@ -37,6 +37,8 @@ fi
 "$SERVER_DIR/.venv/bin/python" -m pip install --disable-pip-version-check \
     "$SERVER_DIR/plugins/world_edit"
 python3.13 "$ROOT_DIR/scripts/download_deps.py" --check
+python3 "$ROOT_DIR/scripts/configure_rcon.py" \
+    "$SERVER_DIR/bedrock_server/server.properties"
 
 runtime_version="$("$SERVER_DIR/.venv/bin/python" -c \
     'import endstone; from importlib.metadata import version; print(version("endstone") + " " + endstone.__minecraft_version__)')"

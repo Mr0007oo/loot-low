@@ -75,10 +75,13 @@ verify an iron golem at the arena center; the command reports success only if
 Endstone confirms the actor was added to the world. On startup, Server Utilities
 sets normal difficulty and `doMobSpawning=true`, and reapplies the mob-spawning
 rule when a player joins so it is enabled after the world has loaded. No plugin
-intercepts entity-spawn events. Natural village iron golem spawning still
-depends on Bedrock's village, villager, bed, and spawn-space requirements;
-`doMobSpawning=true` does not bypass those vanilla conditions. Bedrock Dedicated
-Server does not use Java's `spawn-animals` or `spawn-npcs` properties.
+intercepts entity-spawn events. In Bedrock, natural village iron golem spawning
+requires at least 10 villagers and 20 beds; all villagers must be linked to a
+bed and at least 75% of non-nitwit villagers must have worked during the prior
+in-game day. The village center must also be in a player's simulation distance,
+and a valid, unoccupied spawn location must be available. `doMobSpawning=true`
+does not bypass these vanilla conditions. Bedrock Dedicated Server does not use
+Java's `spawn-animals` or `spawn-npcs` properties.
 
 The `endstone-land-claims` package adds `/claim`, `/unclaim`, `/trust <player>`,
 and `/untrust <player>`. Claims cover the current 16-by-16 chunk and are saved

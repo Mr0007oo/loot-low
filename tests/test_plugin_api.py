@@ -24,27 +24,23 @@ def _class_assignments(plugin_class: ast.ClassDef) -> dict[str, ast.expr]:
 
 
 class PluginApiTests(unittest.TestCase):
-    def test_frp_forwards_rcon_to_local_server(self) -> None:
+    def test_frp_only_forwards_bedrock_udp(self) -> None:
         config = tomllib.loads((ROOT / "frpc.toml").read_text(encoding="utf-8"))
-        rcon_proxies = [
-            proxy
-            for proxy in config["proxies"]
-            if proxy.get("name") == "minecraft-rcon"
-        ]
-
-        self.assertEqual(len(rcon_proxies), 1)
+        self.assertEqual(len(config["proxies"]), 1)
         self.assertEqual(
             {
-                "type": rcon_proxies[0]["type"],
-                "localIP": rcon_proxies[0]["localIP"],
-                "localPort": rcon_proxies[0]["localPort"],
-                "remotePort": rcon_proxies[0]["remotePort"],
+                "name": config["proxies"][0]["name"],
+                "type": config["proxies"][0]["type"],
+                "localIP": config["proxies"][0]["localIP"],
+                "localPort": config["proxies"][0]["localPort"],
+                "remotePort": config["proxies"][0]["remotePort"],
             },
             {
-                "type": "tcp",
+                "name": "minecraft-bedrock",
+                "type": "udp",
                 "localIP": "127.0.0.1",
-                "localPort": 25575,
-                "remotePort": 25575,
+                "localPort": 19132,
+                "remotePort": 19132,
             },
         )
 

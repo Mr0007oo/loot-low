@@ -36,9 +36,6 @@ class BedrockRuntimeTests(unittest.TestCase):
                     "server-ip",
                     "allow-outdated-client",
                     "emit-server-telemetry",
-                    "enable-rcon",
-                    "rcon.port",
-                    "rcon.password",
                 )
             },
             {
@@ -46,13 +43,14 @@ class BedrockRuntimeTests(unittest.TestCase):
                 "server-ip": "0.0.0.0",
                 "allow-outdated-client": "true",
                 "emit-server-telemetry": "false",
-                "enable-rcon": "true",
-                "rcon.port": "25575",
-                "rcon.password": "SET_AT_RUNTIME",
             },
         )
+        self.assertFalse(any(key.lower().startswith("rcon") for key in properties))
 
         launcher = (root / "server" / "start.sh").read_text(encoding="utf-8")
+        watchdog = (root / "server" / "watchdog.sh").read_text(encoding="utf-8")
+        self.assertNotIn("configure_rcon", launcher)
+        self.assertNotIn("RCON", watchdog)
         self.assertIn("pip uninstall", launcher)
         self.assertEqual(launcher.count("pip install"), 8)
         self.assertIn('pip install --disable-pip-version-check "$wheel"', launcher)

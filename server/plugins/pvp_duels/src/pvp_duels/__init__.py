@@ -30,6 +30,7 @@ ARENA_MIN_X = -11
 ARENA_MAX_X = 11
 ARENA_MIN_Y = 150
 ARENA_MAX_Y = 155
+ARENA_SPAWN_Y = ARENA_MIN_Y + 1
 ARENA_MIN_Z = 989
 ARENA_MAX_Z = 1_011
 ARENA_CLEANUP_RADIUS = 64.0
@@ -165,7 +166,7 @@ class PvPDuelsPlugin(Plugin):
         location = Location(
             self.arena_dimension,
             ARENA_X,
-            ARENA_Y + 1,
+            ARENA_SPAWN_Y,
             ARENA_Z,
         )
         golem = self.arena_dimension.spawn_actor(location, "minecraft:iron_golem")
@@ -361,13 +362,13 @@ class PvPDuelsPlugin(Plugin):
         target_spawn = Location(
             self.arena_dimension,
             ARENA_X,
-            ARENA_Y,
+            ARENA_SPAWN_Y,
             ARENA_Z + ARENA_SPAWN_Z_OFFSET,
         )
         challenger_spawn = Location(
             self.arena_dimension,
             ARENA_X,
-            ARENA_Y,
+            ARENA_SPAWN_Y,
             ARENA_Z - ARENA_SPAWN_Z_OFFSET,
         )
         self._equip_loadout(challenger, challenger_loadout)

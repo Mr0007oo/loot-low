@@ -112,6 +112,7 @@ class PluginApiTests(unittest.TestCase):
                 key, value = line.split("=", 1)
                 properties[key.strip()] = value.strip()
         self.assertEqual(properties.get("difficulty"), "normal")
+        self.assertEqual(properties.get("emit-server-telemetry"), "false")
 
         server_utils = (
             PLUGIN_ROOT / "server_utils" / "src" / "server_utils" / "__init__.py"
@@ -138,6 +139,19 @@ class PluginApiTests(unittest.TestCase):
         self.assertEqual(permissions["pvpduels.spawngolem"]["default"], "op")
         self.assertIn('spawn_actor(location, "minecraft:iron_golem")', pvp_duels)
         self.assertIn("if not golem.is_valid:", pvp_duels)
+        self.assertEqual(
+            [
+                ast.unparse(node.args[2])
+                for node in ast.walk(plugin_class)
+                if isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Name)
+                and node.func.id == "Location"
+                and len(node.args) > 2
+                and ast.unparse(node.args[2]) == "ARENA_SPAWN_Y"
+            ],
+            ["ARENA_SPAWN_Y"] * 3,
+        )
+        self.assertIn("ARENA_SPAWN_Y = ARENA_MIN_Y + 1", pvp_duels)
 
 
 if __name__ == "__main__":

@@ -66,6 +66,8 @@ server restarts.
 
 The `endstone-pvp-duels` package builds a sky arena centered at Z=1000. Its
 platform and walls are limited to X=-11..11, Y=150..155, and Z=989..1011.
+Players and operator-spawned iron golems appear at Y=151, above the Y=150 floor
+and inside the arena.
 The arena is not a vanilla village, so natural village-based iron golem
 spawning is not expected there. Operators can use `/spawngolem` to create and
 verify an iron golem at the arena center; the command reports success only if

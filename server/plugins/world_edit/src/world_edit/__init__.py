@@ -26,9 +26,9 @@ class WorldEditPlugin(Plugin):
             "usages": ["/pos2"],
             "permissions": ["worldedit.selection"],
         },
-        "fill": {
+        "wefill": {
             "description": "Fill your selected region with a block (maximum 512)",
-            "usages": ["/fill <block_type>"],
+            "usages": ["/wefill <block_type>"],
             "permissions": ["worldedit.fill"],
         },
     }
@@ -49,7 +49,7 @@ class WorldEditPlugin(Plugin):
         self.logger.info(f"World Edit enabled ({MAX_FILL_BLOCKS}-block fill limit).")
 
     def on_command(self, sender: CommandSender, command: Command, args: list[str]) -> bool:
-        if command.name not in ("pos1", "pos2", "fill"):
+        if command.name not in ("pos1", "pos2", "wefill"):
             return False
         if not isinstance(sender, Player):
             sender.send_message("Error: This command can only be used by a player.")
@@ -81,7 +81,7 @@ class WorldEditPlugin(Plugin):
 
     def _fill(self, player: Player, args: list[str]) -> None:
         if len(args) != 1:
-            player.send_message("Error: Usage: /fill <block_type>")
+            player.send_message("Error: Usage: /wefill <block_type>")
             return
         selection = self.selections.get(str(player.unique_id), {})
         if 1 not in selection or 2 not in selection:
@@ -112,7 +112,7 @@ class WorldEditPlugin(Plugin):
             return
         claim_plugin = self.server.plugin_manager.get_plugin("land_claims")
         if claim_plugin is None:
-            self.logger.error("Land Claims is not available; refusing to run /fill.")
+            self.logger.error("Land Claims is not available; refusing to run /wefill.")
             player.send_message("Error: Land protection is unavailable; fill was not run.")
             return
         for x in range(min_x, max_x + 1):

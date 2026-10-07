@@ -18,8 +18,8 @@ class ContainerPlugins(Plugin):
             "description": "View and manage your remote Ender Chest",
             "usages": [
                 "/ec",
-                "/ec store <inventory_slot> <ender_slot>",
-                "/ec take <ender_slot>",
+                "/ec store <inventory_slot> <ender_store_slot>",
+                "/ec take <ender_take_slot>",
             ],
             "permissions": ["containers.enderchest"],
         },
@@ -27,8 +27,8 @@ class ContainerPlugins(Plugin):
             "description": "View and manage your portable backpack",
             "usages": [
                 "/backpack",
-                "/backpack store <inventory_slot> <bag_slot>",
-                "/backpack take <bag_slot>",
+                "/backpack store <inventory_slot> <bag_store_slot>",
+                "/backpack take <bag_take_slot>",
             ],
             "permissions": ["containers.backpack"],
         },
@@ -63,7 +63,7 @@ class ContainerPlugins(Plugin):
                 self._take_item(sender, args[1:], sender.ender_chest, "Ender Chest", "ender")
             else:
                 sender.send_message(
-                    "Error: Usage: /ec [store <inventory_slot> <ender_slot>|take <ender_slot>]"
+                    "Error: Usage: /ec [store <inventory_slot> <ender_store_slot>|take <ender_take_slot>]"
                 )
             return True
 
@@ -95,7 +95,7 @@ class ContainerPlugins(Plugin):
             return True
 
         sender.send_message(
-            "Error: Usage: /backpack [store <inventory_slot> <bag_slot>|take <bag_slot>]"
+            "Error: Usage: /backpack [store <inventory_slot> <bag_store_slot>|take <bag_take_slot>]"
         )
         return True
 
@@ -301,8 +301,8 @@ class ContainerPlugins(Plugin):
         contents = "; ".join(entries) if entries else "empty"
         player.send_message(
             f"Backpack ({BACKPACK_SIZE} slots): {contents}. "
-            "Use /backpack store <inventory_slot> <bag_slot> or "
-            "/backpack take <bag_slot>."
+            "Use /backpack store <inventory_slot> <bag_store_slot> or "
+            "/backpack take <bag_take_slot>."
         )
 
     def _store_item(
@@ -317,7 +317,7 @@ class ContainerPlugins(Plugin):
             command_name = "ec" if container_name == "Ender Chest" else "backpack"
             player.send_message(
                 f"Error: Usage: /{command_name} "
-                f"store <inventory_slot> <{slot_name}_slot>"
+                f"store <inventory_slot> <{slot_name}_store_slot>"
             )
             return
         slots = self._parse_slots(player, args)
@@ -358,7 +358,7 @@ class ContainerPlugins(Plugin):
             command_name = "ec" if container_name == "Ender Chest" else "backpack"
             player.send_message(
                 f"Error: Usage: /{command_name} "
-                f"take <{slot_name}_slot>"
+                f"take <{slot_name}_take_slot>"
             )
             return
         slots = self._parse_slots(player, args)

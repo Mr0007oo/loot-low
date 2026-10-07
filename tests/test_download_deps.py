@@ -232,7 +232,7 @@ class BedrockRuntimeTests(unittest.TestCase):
             'self._take_item(sender, args[1:], sender.ender_chest, "Ender Chest", "ender")',
             containers_source,
         )
-        self.assertIn("/ec store <inventory_slot> <ender_slot>", containers_source)
+        self.assertIn("/ec store <inventory_slot> <ender_store_slot>", containers_source)
         self.assertIn("BACKPACK_SIZE = 27", containers_source)
         self.assertIn("self.backpacks:", containers_source)
         self.assertIn("Your personal Ender Chest is available from anywhere.", containers_source)
@@ -340,7 +340,9 @@ class BedrockRuntimeTests(unittest.TestCase):
         self.assertIn("if block_count > MAX_FILL_BLOCKS", world_edit_source)
         self.assertIn('"pos1"', world_edit_source)
         self.assertIn('"pos2"', world_edit_source)
-        self.assertIn('"fill"', world_edit_source)
+        self.assertIn('"wefill"', world_edit_source)
+        self.assertIn('"/wefill <block_type>"', world_edit_source)
+        self.assertNotIn('"/fill <block_type>"', world_edit_source)
         self.assertIn("claim_plugin.can_modify(", world_edit_source)
         self.assertNotIn("from endstone.block import BlockType", world_edit_source)
         self.assertIn(".set_type(block_id)", world_edit_source)

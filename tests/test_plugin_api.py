@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+import re
 import tomllib
 import unittest
 from pathlib import Path
@@ -61,12 +62,25 @@ class PluginApiTests(unittest.TestCase):
                 for command_name, command_config in commands.items():
                     self.assertIn("description", command_config, command_name)
                     self.assertTrue(command_config.get("usages"), command_name)
+                    parameter_names = [
+                        parameter
+                        for usage in command_config["usages"]
+                        for parameter in re.findall(r"<([^>]+)>", usage)
+                    ]
+                    self.assertEqual(
+                        len(parameter_names),
+                        len(set(parameter_names)),
+                        f"{command_name} repeats argument enum names across usages",
+                    )
                     for permission in command_config.get("permissions", []):
                         self.assertIn(
                             permission,
                             permissions,
                             f"{command_name} references undeclared permission {permission}",
                         )
+                if manifest_path.parent.name == "world_edit":
+                    self.assertNotIn("fill", commands)
+                    self.assertIn("wefill", commands)
 
                 handlers = [
                     node

@@ -57,10 +57,11 @@ The `endstone-container-plugins` package adds `/ec`, which opens a Bedrock
 ActionForm menu for remotely depositing and withdrawing items from the
 caller's `player.ender_chest` without visiting a physical Ender Chest. The menu
 moves stacks into empty slots and preserves items if the player's inventory is
-full. `/ec store <inventory_slot> <ender_slot>` and `/ec take <ender_slot>` are
-also available as command alternatives. `/backpack` provides a 27-slot,
-in-memory portable bag; use `/backpack store <inventory_slot> <bag_slot>` and
-`/backpack take <bag_slot>` to move items. Backpacks do not persist across
+full. `/ec store <inventory_slot> <ender_store_slot>` and
+`/ec take <ender_take_slot>` are also available as command alternatives.
+`/backpack` provides a 27-slot, in-memory portable bag; use
+`/backpack store <inventory_slot> <bag_store_slot>` and
+`/backpack take <bag_take_slot>` to move items. Backpacks do not persist across
 server restarts.
 
 The `endstone-pvp-duels` package builds a sky arena centered at Z=1000. Its
@@ -75,7 +76,9 @@ your current chunk; sneak-right-click with the same item to unclaim it.
 Right-clicking another player's chest, barrel, shulker box, furnace, or other
 supported container in a claimed chunk is cancelled unless you are trusted.
 
-The `endstone-world-edit` package adds `/pos1`, `/pos2`, and `/fill <block_type>`.
+The `endstone-world-edit` package adds `/pos1`, `/pos2`, and
+`/wefill <block_type>` (using a distinct command name to avoid Bedrock's
+built-in `/fill` command).
 Fills are capped at 512 blocks and pre-check every affected claim before
 changing any blocks. World Edit depends on Land Claims and fails closed if the
 protection plugin is unavailable.

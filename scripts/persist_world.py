@@ -25,6 +25,7 @@ PERSIST_PATHS = (
     "server/permissions.json",
     "server/allowlist.json",
 )
+WORLD_PATHS = ("server/world", "server/worlds", "server/bedrock_server/worlds")
 TRANSIENT_EXCLUDES = (
     ":(exclude,glob)**/session.lock",
     ":(exclude,glob)**/*.lock",
@@ -157,16 +158,76 @@ def commit_and_push() -> bool:
             check=False,
         )
         if remote_is_ancestor.returncode == 1:
-            merge = run_git(
-                ["merge", "--no-edit", "-X", "ours", "origin/main"],
+            local_is_ancestor = run_git(
+                ["merge-base", "--is-ancestor", "HEAD", "origin/main"],
                 check=False,
             )
-            if merge.returncode:
+            if local_is_ancestor.returncode == 0:
+                run_git(["merge", "--ff-only", "origin/main"])
+                continue
+            if local_is_ancestor.returncode != 1:
+                raise RuntimeError(
+                    "Cannot determine whether HEAD is already included in origin/main"
+                )
+
+            merge = run_git(
+                ["merge", "--no-edit", "--no-commit", "--no-ff", "-X", "ours", "origin/main"],
+                check=False,
+            )
+            merge_head = run_git(["rev-parse", "--verify", "-q", "MERGE_HEAD"], check=False)
+            if merge_head.returncode:
+                detail = merge.stderr.strip() or merge.stdout.strip()
+                raise RuntimeError(f"Cannot merge origin/main: {detail}")
+
+            local_world_files = set(
+                run_git(
+                    ["ls-tree", "-r", "--name-only", "-z", "HEAD", "--", *WORLD_PATHS]
+                ).stdout.split("\0")
+            )
+            remote_world_files = run_git(
+                ["ls-tree", "-r", "--name-only", "-z", "origin/main", "--", *WORLD_PATHS]
+            ).stdout.split("\0")
+            remote_only_world_files = [
+                path
+                for path in remote_world_files
+                if path and path not in local_world_files
+            ]
+            if remote_only_world_files:
+                run_git(["rm", "-f", "--", *remote_only_world_files])
+
+            world_paths = [
+                path
+                for path in WORLD_PATHS
+                if run_git(["cat-file", "-e", f"HEAD:{path}"], check=False).returncode == 0
+            ]
+            if world_paths:
+                run_git(
+                    [
+                        "restore",
+                        "--source=HEAD",
+                        "--staged",
+                        "--worktree",
+                        "--",
+                        *world_paths,
+                    ]
+                )
+
+            unresolved = run_git(["diff", "--name-only", "--diff-filter=U"], check=False)
+            if unresolved.returncode:
+                run_git(["merge", "--abort"], check=False)
+                detail = unresolved.stderr.strip() or unresolved.stdout.strip()
+                raise RuntimeError(
+                    f"Cannot inspect conflicts while merging origin/main: {detail}"
+                )
+            if unresolved.stdout.strip():
                 run_git(["merge", "--abort"], check=False)
                 detail = merge.stderr.strip() or merge.stdout.strip()
+                conflicts = unresolved.stdout.strip()
                 raise RuntimeError(
-                    f"Cannot merge origin/main while preserving local world data: {detail}"
+                    "Cannot merge origin/main while preserving local world data: "
+                    f"{detail}\nUnresolved paths:\n{conflicts}"
                 )
+            run_git(["commit", "--no-edit"])
         elif remote_is_ancestor.returncode != 0:
             raise RuntimeError(
                 "Cannot determine whether origin/main is already included in the local commit"

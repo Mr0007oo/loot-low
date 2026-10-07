@@ -135,7 +135,10 @@ class BedrockRuntimeTests(unittest.TestCase):
         self.assertIn("server/worlds", persistence)
         self.assertIn("Persist world progress [skip ci]", persistence)
         self.assertIn('"HEAD:refs/heads/main"', persistence)
-        self.assertIn('["merge", "--no-edit", "-X", "ours", "origin/main"]', persistence)
+        self.assertIn(
+            '["merge", "--no-edit", "--no-commit", "--no-ff", "-X", "ours", "origin/main"]',
+            persistence,
+        )
         self.assertNotIn("git rebase", persistence)
         watchdog = (root / "server" / "watchdog.sh").read_text(encoding="utf-8")
         self.assertIn('WORLD_SYNC_INTERVAL_SECONDS="${WORLD_SYNC_INTERVAL_SECONDS:-3600}"', watchdog)
@@ -497,9 +500,26 @@ class BedrockRuntimeTests(unittest.TestCase):
             world_file = worktree / "server" / "world" / "level.dat"
             world_file.parent.mkdir(parents=True)
             world_file.write_text("base world\n", encoding="utf-8")
+            bedrock_db_file = (
+                worktree
+                / "server"
+                / "bedrock_server"
+                / "worlds"
+                / "world"
+                / "db"
+                / "001040.ldb"
+            )
+            bedrock_db_file.parent.mkdir(parents=True)
+            bedrock_db_file.write_bytes(b"bedrock snapshot base\n")
             (worktree / "README").write_text("base\n", encoding="utf-8")
             subprocess.run(
-                ["git", "add", "README", "server/world/level.dat"],
+                [
+                    "git",
+                    "add",
+                    "README",
+                    "server/world/level.dat",
+                    "server/bedrock_server/worlds/world/db/001040.ldb",
+                ],
                 cwd=worktree,
                 check=True,
                 capture_output=True,
@@ -545,13 +565,34 @@ class BedrockRuntimeTests(unittest.TestCase):
                 )
 
             world_file.write_text("local player progress\n", encoding="utf-8")
+            bedrock_db_file.unlink()
             (concurrent / "README").write_text("remote workflow update\n", encoding="utf-8")
             (concurrent / "server" / "world" / "level.dat").write_text(
                 "remote world snapshot\n",
                 encoding="utf-8",
             )
+            concurrent_db_file = (
+                concurrent
+                / "server"
+                / "bedrock_server"
+                / "worlds"
+                / "world"
+                / "db"
+                / "001040.ldb"
+            )
+            renamed_db_file = concurrent_db_file.with_name("001089.ldb")
+            concurrent_db_file.rename(renamed_db_file)
+            renamed_db_file.write_bytes(b"bedrock snapshot remote\n")
             subprocess.run(
-                ["git", "add", "README", "server/world/level.dat"],
+                [
+                    "git",
+                    "add",
+                    "-A",
+                    "--",
+                    "README",
+                    "server/world/level.dat",
+                    "server/bedrock_server/worlds/world/db",
+                ],
                 cwd=concurrent,
                 check=True,
                 capture_output=True,
@@ -608,6 +649,17 @@ class BedrockRuntimeTests(unittest.TestCase):
             ).stdout
             self.assertEqual(remote_readme, "remote workflow update\n")
             self.assertEqual(remote_world, "local player progress\n")
+            for db_file in (
+                "server/bedrock_server/worlds/world/db/001040.ldb",
+                "server/bedrock_server/worlds/world/db/001089.ldb",
+            ):
+                result = subprocess.run(
+                    ["git", "--git-dir", str(remote), "cat-file", "-e", f"main:{db_file}"],
+                    check=False,
+                    capture_output=True,
+                    text=True,
+                )
+                self.assertNotEqual(result.returncode, 0, f"{db_file} unexpectedly persisted")
             parents = subprocess.run(
                 ["git", "--git-dir", str(remote), "rev-list", "--parents", "-n", "1", "main"],
                 check=True,

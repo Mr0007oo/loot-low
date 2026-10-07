@@ -24,6 +24,30 @@ def _class_assignments(plugin_class: ast.ClassDef) -> dict[str, ast.expr]:
 
 
 class PluginApiTests(unittest.TestCase):
+    def test_frp_forwards_rcon_to_local_server(self) -> None:
+        config = tomllib.loads((ROOT / "frpc.toml").read_text(encoding="utf-8"))
+        rcon_proxies = [
+            proxy
+            for proxy in config["proxies"]
+            if proxy.get("name") == "minecraft-rcon"
+        ]
+
+        self.assertEqual(len(rcon_proxies), 1)
+        self.assertEqual(
+            {
+                "type": rcon_proxies[0]["type"],
+                "localIP": rcon_proxies[0]["localIP"],
+                "localPort": rcon_proxies[0]["localPort"],
+                "remotePort": rcon_proxies[0]["remotePort"],
+            },
+            {
+                "type": "tcp",
+                "localIP": "127.0.0.1",
+                "localPort": 25575,
+                "remotePort": 25575,
+            },
+        )
+
     def test_every_plugin_manifest_and_command_matches_its_source(self) -> None:
         manifests = sorted(PLUGIN_ROOT.glob("*/pyproject.toml"))
         self.assertEqual(len(manifests), 7)

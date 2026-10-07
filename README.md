@@ -15,8 +15,9 @@ Configure the FRP host firewall and provider network rules to allow UDP 19132.
 The workflow requires the `FRP_SERVER_IP` and `FRP_TOKEN` repository secrets.
 RCON is enabled on TCP 25575 for local server integration; the workflow reads
 the password from the `RCON_PASSWORD` repository secret and requires at least
-32 characters. Do not expose TCP 25575 publicly. Any remote RCON client must
-use the same secret and connect through a separately secured network path.
+32 characters. FRP forwards RCON over TCP 25575 to the FRP host. The Telegram
+bot running on that host should connect to `127.0.0.1:25575`; firewall the FRP
+host to deny external access to TCP 25575. Do not expose RCON publicly.
 The runtime is pinned to Endstone 0.11.2 and its supported BDS 1.26.3.1 build.
 The Endstone wheel and official Mojang BDS archive are SHA-256 verified before
 installation. The server keeps `allow-outdated-client=true` for older clients

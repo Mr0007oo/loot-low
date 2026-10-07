@@ -5,6 +5,7 @@ SERVER_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 ROOT_DIR="$(dirname "$SERVER_DIR")"
 WORLD_PERSIST_SCRIPT="${WORLD_PERSIST_SCRIPT:-$ROOT_DIR/scripts/persist_world.py}"
 cd "$SERVER_DIR"
+export LOOT_LOW_PLAYER_DATA_DIR="$SERVER_DIR/player_data"
 
 if ! command -v python3.13 >/dev/null 2>&1; then
     echo "ERROR: Python 3.13 is required by the Endstone Linux release." >&2

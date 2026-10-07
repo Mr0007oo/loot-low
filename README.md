@@ -42,10 +42,13 @@ under Endstone's `endstone-<entry-point>` validation rule. It does not register
 event listeners.
 
 The `endstone-fun-plugins` package adds `/coinflip`, `/roll [sides]` (2-1000),
-`/magic8ball <question>`, `/sethome`, `/home`, `/tpa <player>`, `/tpaccept`,
-and `/tpdeny`. Homes and pending teleport requests are held in memory and do
-not survive a plugin/server restart. These commands are available to all
-players and do not register event listeners or perform world-wide operations.
+`/magic8ball <question>`, `/sethome`, `/home`, `/setwaypoint <name>`,
+`/waypointlist`, `/waypoint <name>`, `/tpa <player>`, `/tpaccept`, and
+`/tpdeny`. Homes and named waypoints are saved to `server/player_data` on
+change, player disconnect, plugin shutdown, and hourly; this directory is
+included in world-data persistence. Pending teleport requests remain
+session-only. Player-target commands accept quoted names and names split over
+multiple command arguments. These commands are available to all players.
 
 The `endstone-vein-miner` plugin automatically breaks up to 32 connected,
 identical ores or logs in survival mode. Use `/veinmine` to toggle it on or off
@@ -55,7 +58,9 @@ amounts and do not simulate tool enchantments or durability use.
 
 The `endstone-container-plugins` package adds `/ec`, which opens a Bedrock
 ActionForm menu for remotely depositing and withdrawing items from the
-caller's `player.ender_chest` without visiting a physical Ender Chest. The menu
+caller's `player.ender_chest` without visiting a physical Ender Chest. Endstone
+0.11.2 does not expose an API for opening a native, draggable inventory window
+from a plugin, so the remote menu uses forms and explicit item transfers. It
 moves stacks into empty slots and preserves items if the player's inventory is
 full. `/ec store <inventory_slot> <ender_store_slot>` and
 `/ec take <ender_take_slot>` are also available as command alternatives.

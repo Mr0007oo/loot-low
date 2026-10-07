@@ -24,6 +24,7 @@ PERSIST_PATHS = (
     "server/bedrock_server/worlds",
     "server/permissions.json",
     "server/allowlist.json",
+    "server/player_data",
 )
 WORLD_PATHS = ("server/world", "server/worlds", "server/bedrock_server/worlds")
 TRANSIENT_EXCLUDES = (

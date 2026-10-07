@@ -40,6 +40,26 @@ ARENA_ROOF_BLOCK = "minecraft:glass"
 KIT_NAMES = ("Netherite Kit", "Crystal PvP Kit", "Archer Kit")
 
 
+def _find_online_player(server: object, args: list[str]) -> Player | None:
+    name = " ".join(args).strip()
+    if len(name) >= 2 and name[0] == name[-1] and name[0] in ("'", '"'):
+        name = name[1:-1].strip()
+    if not name:
+        return None
+
+    players = server.online_players
+    exact_matches = [player for player in players if player.name.casefold() == name.casefold()]
+    if len(exact_matches) == 1:
+        return exact_matches[0]
+
+    compact_name = "".join(name.split()).casefold()
+    compact_matches = [
+        player for player in players
+        if "".join(player.name.split()).casefold() == compact_name
+    ]
+    return compact_matches[0] if len(compact_matches) == 1 else None
+
+
 @dataclass(frozen=True)
 class PlayerBackup:
     contents: tuple[ItemStack | None, ...]
@@ -137,11 +157,16 @@ class PvPDuelsPlugin(Plugin):
             return True
 
         if command.name == "pvp":
-            target_name = " ".join(args).strip()
-            if not target_name:
+            if not args:
                 sender.send_message("Error: Usage: /pvp <player_name>")
                 return True
-            self._show_kit_selection(sender, target_name)
+            target = _find_online_player(self.server, args)
+            if target is None:
+                sender.send_message(
+                    "Error: That player is not online or the name is ambiguous."
+                )
+                return True
+            self._show_kit_selection(sender, target)
         elif command.name == "pvpaccept":
             if args:
                 sender.send_message("Error: Usage: /pvpaccept")
@@ -231,11 +256,7 @@ class PvPDuelsPlugin(Plugin):
         if player_id in self.pending_restores:
             self._schedule_restore(player_id)
 
-    def _show_kit_selection(self, player: Player, target_name: str) -> None:
-        target = self.server.get_player(target_name)
-        if target is None:
-            player.send_message("Error: That player is not online.")
-            return
+    def _show_kit_selection(self, player: Player, target: Player) -> None:
         if target.unique_id == player.unique_id:
             player.send_message("Error: You cannot challenge yourself.")
             return

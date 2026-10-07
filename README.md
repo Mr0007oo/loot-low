@@ -66,6 +66,12 @@ server restarts.
 
 The `endstone-pvp-duels` package builds a sky arena centered at Z=1000. Its
 platform and walls are limited to X=-11..11, Y=150..155, and Z=989..1011.
+The arena is not a vanilla village, so natural village-based iron golem
+spawning is not expected there. Operators can use `/spawngolem` to create and
+verify an iron golem at the arena center; the command reports success only if
+Endstone confirms the actor was added to the world. On startup, Server Utilities
+sets normal difficulty and `doMobSpawning=true`. Bedrock Dedicated Server does
+not use Java's `spawn-animals` or `spawn-npcs` properties.
 
 The `endstone-land-claims` package adds `/claim`, `/unclaim`, `/trust <player>`,
 and `/untrust <player>`. Claims cover the current 16-by-16 chunk and are saved

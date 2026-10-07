@@ -69,6 +69,7 @@ jobs:
           expected = {
               "server-port": "19132",
               "server-ip": "0.0.0.0",
+              "difficulty": "normal",
               "allow-outdated-client": "true",
               "emit-server-telemetry": "false",
               "enable-rcon": "true",

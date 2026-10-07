@@ -25,6 +25,8 @@ class ServerUtilsPlugin(Plugin):
     def on_enable(self) -> None:
         self.register_events(self)
         self._enable_show_coordinates()
+        self._enable_mob_spawning()
+        self._enable_normal_difficulty()
         self.logger.info("Server utilities enabled.")
 
     @event_handler
@@ -36,6 +38,20 @@ class ServerUtilsPlugin(Plugin):
             self.server.command_sender,
             "gamerule showcoordinates true",
         )
+
+    def _enable_mob_spawning(self) -> None:
+        command = "gamerule doMobSpawning true"
+        if not self.server.dispatch_command(self.server.command_sender, command):
+            self.logger.error(f"Could not apply startup setting: {command}.")
+            return
+        self.logger.info("Natural mob spawning enabled (gamerule doMobSpawning=true).")
+
+    def _enable_normal_difficulty(self) -> None:
+        command = "difficulty normal"
+        if not self.server.dispatch_command(self.server.command_sender, command):
+            self.logger.error(f"Could not apply startup setting: {command}.")
+            return
+        self.logger.info("Server difficulty set to normal.")
 
     def on_command(self, sender: CommandSender, command: Command, args: list[str]) -> bool:
         sender.send_message(

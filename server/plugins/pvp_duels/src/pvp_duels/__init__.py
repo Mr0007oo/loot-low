@@ -85,13 +85,22 @@ class PvPDuelsPlugin(Plugin):
             "usages": ["/pvpdeny"],
             "permissions": ["pvpduels.challenge"],
         },
+        "spawngolem": {
+            "description": "Spawn an iron golem in the sky arena",
+            "usages": ["/spawngolem"],
+            "permissions": ["pvpduels.spawngolem"],
+        },
     }
 
     permissions = {
         "pvpduels.challenge": {
             "description": "Challenge and accept PvP duels",
             "default": True,
-        }
+        },
+        "pvpduels.spawngolem": {
+            "description": "Spawn an iron golem in the sky arena",
+            "default": "op",
+        },
     }
 
     def on_enable(self) -> None:
@@ -114,8 +123,14 @@ class PvPDuelsPlugin(Plugin):
                 self._restore_and_return(player)
 
     def on_command(self, sender: CommandSender, command: Command, args: list[str]) -> bool:
-        if command.name not in ("pvp", "pvpaccept", "pvpdeny"):
+        if command.name not in ("pvp", "pvpaccept", "pvpdeny", "spawngolem"):
             return False
+        if command.name == "spawngolem":
+            if args:
+                sender.send_error_message("Error: Usage: /spawngolem")
+                return True
+            self._spawn_arena_golem(sender)
+            return True
         if not isinstance(sender, Player):
             sender.send_message("Error: This command can only be used by a player.")
             return True
@@ -137,6 +152,39 @@ class PvPDuelsPlugin(Plugin):
                 return True
             self._deny_challenge(sender)
         return True
+
+    def _spawn_arena_golem(self, sender: CommandSender) -> None:
+        if self.arena_dimension is None:
+            self.logger.error("Cannot spawn an iron golem: the overworld is unavailable.")
+            sender.send_error_message("Error: The overworld arena dimension is not available.")
+            return
+        if not self._ensure_arena():
+            sender.send_error_message("Error: The sky arena is obstructed.")
+            return
+
+        location = Location(
+            self.arena_dimension,
+            ARENA_X,
+            ARENA_Y + 1,
+            ARENA_Z,
+        )
+        golem = self.arena_dimension.spawn_actor(location, "minecraft:iron_golem")
+        if not golem.is_valid:
+            self.logger.error(
+                "Endstone did not add the iron golem to the sky arena "
+                f"at {location.x:g}, {location.y:g}, {location.z:g}."
+            )
+            sender.send_error_message("Error: The iron golem could not be spawned.")
+            return
+
+        self.logger.info(
+            f"{sender.name} spawned iron golem {golem.runtime_id} in the sky arena "
+            f"at {location.x:g}, {location.y:g}, {location.z:g}."
+        )
+        sender.send_message(
+            f"Iron golem spawned in the sky arena at "
+            f"{location.x:g}, {location.y:g}, {location.z:g}."
+        )
 
     @event_handler(priority=EventPriority.HIGHEST)
     def on_player_death(self, event: PlayerDeathEvent) -> None:

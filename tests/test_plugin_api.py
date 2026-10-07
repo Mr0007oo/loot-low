@@ -102,6 +102,43 @@ class PluginApiTests(unittest.TestCase):
                 )
                 self.assertEqual(ast.unparse(handler.returns), "bool")
 
+    def test_mob_spawning_and_arena_golem_command_are_configured(self) -> None:
+        properties = {}
+        for line in (ROOT / "server" / "server.properties").read_text(
+            encoding="utf-8"
+        ).splitlines():
+            line = line.strip()
+            if line and not line.startswith("#") and "=" in line:
+                key, value = line.split("=", 1)
+                properties[key.strip()] = value.strip()
+        self.assertEqual(properties.get("difficulty"), "normal")
+
+        server_utils = (
+            PLUGIN_ROOT / "server_utils" / "src" / "server_utils" / "__init__.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn('"gamerule doMobSpawning true"', server_utils)
+
+        pvp_duels = (
+            PLUGIN_ROOT / "pvp_duels" / "src" / "pvp_duels" / "__init__.py"
+        ).read_text(encoding="utf-8")
+        module = ast.parse(pvp_duels)
+        plugin_class = next(
+            node
+            for node in module.body
+            if isinstance(node, ast.ClassDef) and node.name == "PvPDuelsPlugin"
+        )
+        assignments = _class_assignments(plugin_class)
+        commands = ast.literal_eval(assignments["commands"])
+        permissions = ast.literal_eval(assignments["permissions"])
+        self.assertEqual(commands["spawngolem"]["usages"], ["/spawngolem"])
+        self.assertEqual(
+            commands["spawngolem"]["permissions"],
+            ["pvpduels.spawngolem"],
+        )
+        self.assertEqual(permissions["pvpduels.spawngolem"]["default"], "op")
+        self.assertIn('spawn_actor(location, "minecraft:iron_golem")', pvp_duels)
+        self.assertIn("if not golem.is_valid:", pvp_duels)
+
 
 if __name__ == "__main__":
     unittest.main()

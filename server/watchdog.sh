@@ -12,9 +12,6 @@ SERVER_LOG="${SERVER_LOG:-$SERVER_DIR/logs/server-session.log}"
 WATCHDOG_LOG="${WATCHDOG_LOG:-$SERVER_DIR/logs/watchdog-health.log}"
 POLL_INTERVAL_SECONDS="${WATCHDOG_INTERVAL_SECONDS:-30}"
 WORLD_SYNC_INTERVAL_SECONDS="${WORLD_SYNC_INTERVAL_SECONDS:-3600}"
-RCON_PORT="${RCON_PORT:-25575}"
-RCON_FAILURE_LIMIT="${RCON_FAILURE_LIMIT:-3}"
-RCON_FAILURE_COUNT=0
 SERVER_PID=""
 FRPC_PID="${FRPC_PID:-}"
 
@@ -79,29 +76,7 @@ if [[ ! "$WORLD_SYNC_INTERVAL_SECONDS" =~ ^[1-9][0-9]*$ ]]; then
     echo "ERROR: WORLD_SYNC_INTERVAL_SECONDS must be a positive integer." >&2
     exit 1
 fi
-if [[ ! "$RCON_PORT" =~ ^[1-9][0-9]*$ ]] || (( RCON_PORT > 65535 )); then
-    echo "ERROR: RCON_PORT must be between 1 and 65535." >&2
-    exit 1
-fi
-if [[ ! "$RCON_FAILURE_LIMIT" =~ ^[1-9][0-9]*$ ]]; then
-    echo "ERROR: RCON_FAILURE_LIMIT must be a positive integer." >&2
-    exit 1
-fi
-
 mkdir -p "$SERVER_DIR/logs"
-
-is_rcon_listening() {
-    python3 -c '
-import socket
-import sys
-
-try:
-    with socket.create_connection(("127.0.0.1", int(sys.argv[1])), timeout=2):
-        pass
-except (OSError, ValueError):
-    raise SystemExit(1)
-' "$RCON_PORT"
-}
 
 start_frpc() {
     : >"$FRPC_LOG"
@@ -160,20 +135,6 @@ while true; do
         log "Endstone supervisor exited with status $server_status; restarting in 5 seconds."
         sleep 5 || true
         start_server
-        RCON_FAILURE_COUNT=0
-    elif is_rcon_listening; then
-        RCON_FAILURE_COUNT=0
-    else
-        RCON_FAILURE_COUNT=$((RCON_FAILURE_COUNT + 1))
-        log "RCON TCP port ${RCON_PORT} is not listening (${RCON_FAILURE_COUNT}/${RCON_FAILURE_LIMIT})."
-        if (( RCON_FAILURE_COUNT >= RCON_FAILURE_LIMIT )); then
-            log "RCON listener remained unavailable; restarting the Endstone supervisor."
-            stop_process "$SERVER_PID"
-            SERVER_PID=""
-            sleep 5 || true
-            start_server
-            RCON_FAILURE_COUNT=0
-        fi
     fi
 
     if (( SECONDS - last_world_sync >= WORLD_SYNC_INTERVAL_SECONDS )); then

@@ -32,6 +32,7 @@ class ServerUtilsPlugin(Plugin):
     @event_handler
     def on_player_join(self, event: PlayerJoinEvent) -> None:
         self._enable_show_coordinates()
+        self._enable_mob_spawning()
 
     def _enable_show_coordinates(self) -> None:
         self.server.dispatch_command(

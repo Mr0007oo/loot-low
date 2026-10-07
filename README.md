@@ -72,8 +72,12 @@ The arena is not a vanilla village, so natural village-based iron golem
 spawning is not expected there. Operators can use `/spawngolem` to create and
 verify an iron golem at the arena center; the command reports success only if
 Endstone confirms the actor was added to the world. On startup, Server Utilities
-sets normal difficulty and `doMobSpawning=true`. Bedrock Dedicated Server does
-not use Java's `spawn-animals` or `spawn-npcs` properties.
+sets normal difficulty and `doMobSpawning=true`, and reapplies the mob-spawning
+rule when a player joins so it is enabled after the world has loaded. No plugin
+intercepts entity-spawn events. Natural village iron golem spawning still
+depends on Bedrock's village, villager, bed, and spawn-space requirements;
+`doMobSpawning=true` does not bypass those vanilla conditions. Bedrock Dedicated
+Server does not use Java's `spawn-animals` or `spawn-npcs` properties.
 
 The `endstone-land-claims` package adds `/claim`, `/unclaim`, `/trust <player>`,
 and `/untrust <player>`. Claims cover the current 16-by-16 chunk and are saved

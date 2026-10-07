@@ -118,6 +118,21 @@ class PluginApiTests(unittest.TestCase):
             PLUGIN_ROOT / "server_utils" / "src" / "server_utils" / "__init__.py"
         ).read_text(encoding="utf-8")
         self.assertIn('"gamerule doMobSpawning true"', server_utils)
+        server_utils_module = ast.parse(server_utils)
+        server_utils_class = next(
+            node
+            for node in server_utils_module.body
+            if isinstance(node, ast.ClassDef) and node.name == "ServerUtilsPlugin"
+        )
+        join_handler = next(
+            node
+            for node in server_utils_class.body
+            if isinstance(node, ast.FunctionDef) and node.name == "on_player_join"
+        )
+        self.assertIn(
+            "self._enable_mob_spawning()",
+            ast.unparse(join_handler),
+        )
 
         pvp_duels = (
             PLUGIN_ROOT / "pvp_duels" / "src" / "pvp_duels" / "__init__.py"

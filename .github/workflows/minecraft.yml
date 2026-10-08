@@ -76,6 +76,7 @@ jobs:
               "server-ip": "0.0.0.0",
               "view-distance": "6",
               "tick-distance": "4",
+              "level-seed": "9064150133272194",
               "difficulty": "normal",
               "allow-outdated-client": "true",
               "emit-server-telemetry": "false",
@@ -96,8 +97,8 @@ jobs:
             server/bedrock_server/worlds
             server/permissions.json
             server/allowlist.json
-          key: bedrock-world-${{ github.run_id }}-${{ github.run_attempt }}
-          restore-keys: bedrock-world-
+          key: bedrock-world-seed-9064150133272194-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: bedrock-world-seed-9064150133272194-
 
       - name: Download and validate Endstone
         env:

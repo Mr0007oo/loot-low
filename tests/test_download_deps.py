@@ -36,6 +36,7 @@ class BedrockRuntimeTests(unittest.TestCase):
                     "server-ip",
                     "view-distance",
                     "tick-distance",
+                    "level-seed",
                     "allow-outdated-client",
                     "emit-server-telemetry",
                 )
@@ -45,6 +46,7 @@ class BedrockRuntimeTests(unittest.TestCase):
                 "server-ip": "0.0.0.0",
                 "view-distance": "6",
                 "tick-distance": "4",
+                "level-seed": "9064150133272194",
                 "allow-outdated-client": "true",
                 "emit-server-telemetry": "false",
             },
@@ -161,6 +163,8 @@ class BedrockRuntimeTests(unittest.TestCase):
         self.assertIn("Telegram admin requested graceful server shutdown.", workflow)
         self.assertIn("if: ${{ always() }}", workflow)
         self.assertIn("vars.WORLD_RECOVERY_COMMIT", workflow)
+        self.assertIn("bedrock-world-seed-9064150133272194-", workflow)
+        self.assertNotIn("restore-keys: bedrock-world-\n", workflow)
         self.assertIn("--restore-only", workflow)
         self.assertNotIn("server/worlds", workflow_paths)
         self.assertNotIn("server/world/", workflow_paths)

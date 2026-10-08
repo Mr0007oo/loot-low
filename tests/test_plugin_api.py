@@ -9,6 +9,27 @@ from pathlib import Path
 
 ROOT = Path(__file__).parents[1]
 PLUGIN_ROOT = ROOT / "server" / "plugins"
+COMMAND_PARAMETER_TYPES = {
+    "actor",
+    "block",
+    "block_pos",
+    "block_states",
+    "bool",
+    "entity",
+    "entity_type",
+    "float",
+    "int",
+    "json",
+    "message",
+    "player",
+    "pos",
+    "str",
+    "string",
+    "target",
+    "vec3",
+    "vec3f",
+    "vec3i",
+}
 
 
 def _class_assignments(plugin_class: ast.ClassDef) -> dict[str, ast.expr]:
@@ -82,11 +103,20 @@ class PluginApiTests(unittest.TestCase):
                 for command_name, command_config in commands.items():
                     self.assertIn("description", command_config, command_name)
                     self.assertTrue(command_config.get("usages"), command_name)
-                    parameter_names = [
-                        parameter
-                        for usage in command_config["usages"]
-                        for parameter in re.findall(r"<([^>]+)>", usage)
-                    ]
+                    parameter_names = []
+                    for usage in command_config["usages"]:
+                        for declaration in re.findall(r"[<\[]([^>\]]+)[>\]]", usage):
+                            name, separator, parameter_type = declaration.partition(": ")
+                            self.assertTrue(
+                                separator,
+                                f"{command_name} has an untyped parameter in {usage!r}",
+                            )
+                            self.assertIn(
+                                parameter_type,
+                                COMMAND_PARAMETER_TYPES,
+                                f"{command_name} has an unsupported parameter type in {usage!r}",
+                            )
+                            parameter_names.append(name)
                     self.assertEqual(
                         len(parameter_names),
                         len(set(parameter_names)),

@@ -55,12 +55,12 @@ class LandClaimsPlugin(Plugin):
         },
         "trust": {
             "description": "Allow an online player to build in your current claim",
-            "usages": ["/trust <player>"],
+            "usages": ["/trust <player: message>"],
             "permissions": ["landclaims.trust"],
         },
         "untrust": {
             "description": "Remove a player's access to your current claim",
-            "usages": ["/untrust <player>"],
+            "usages": ["/untrust <player: message>"],
             "permissions": ["landclaims.trust"],
         },
     }

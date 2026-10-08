@@ -49,23 +49,44 @@ fi
 server_pid=""
 server_stdin_pid=""
 server_stdin_fd=""
+server_console_fifo="${SERVER_CONSOLE_FIFO:-}"
+server_console_fifo_created=false
 
 close_server_stdin() {
+    if [[ -n "$server_stdin_fd" ]]; then
+        exec {server_stdin_fd}>&-
+        server_stdin_fd=""
+    fi
     if [[ -n "$server_stdin_pid" ]]; then
         kill -TERM "$server_stdin_pid" 2>/dev/null || true
         wait "$server_stdin_pid" 2>/dev/null || true
         server_stdin_pid=""
     fi
-    if [[ -n "$server_stdin_fd" ]]; then
-        exec {server_stdin_fd}<&-
-        server_stdin_fd=""
+    if [[ "$server_console_fifo_created" == true ]]; then
+        rm -f -- "$server_console_fifo"
+        server_console_fifo_created=false
     fi
 }
 
 stop_server() {
     if [[ -n "$server_pid" ]] && kill -0 "$server_pid" 2>/dev/null; then
         echo "[$(date -Is)] Shutdown requested; forwarding SIGTERM to Endstone."
-        kill -TERM "$server_pid" 2>/dev/null || true
+        if [[ -n "$server_console_fifo" && -n "$server_stdin_fd" ]]; then
+            printf 'stop\n' >&"$server_stdin_fd" || true
+            for ((attempt = 0; attempt < 30; attempt++)); do
+                if ! kill -0 "$server_pid" 2>/dev/null; then
+                    break
+                fi
+                sleep 1
+            done
+        fi
+        if kill -0 "$server_pid" 2>/dev/null; then
+            native_pid="$(pgrep -P "$server_pid" -x bedrock_server || true)"
+            if [[ -n "$native_pid" ]]; then
+                kill -INT "$native_pid" 2>/dev/null || true
+            fi
+            kill -TERM "$server_pid" 2>/dev/null || true
+        fi
         wait "$server_pid" 2>/dev/null || true
         server_pid=""
     fi
@@ -91,12 +112,31 @@ restart_count=0
 max_restarts=3
 while true; do
     echo "[$(date -Is)] Starting native Bedrock server with Endstone ${wheel##*/} (restart ${restart_count}/${max_restarts})."
-    exec {server_stdin_fd}< <(tail -f /dev/null)
-    server_stdin_pid=$!
-    "$SERVER_DIR/.venv/bin/python" -m endstone \
-        --server-folder "$SERVER_DIR/bedrock_server" \
-        --yes \
-        --no-interactive <&"$server_stdin_fd" &
+    if [[ -n "$server_console_fifo" ]]; then
+        mkdir -p "$(dirname "$server_console_fifo")"
+        if [[ -e "$server_console_fifo" || -L "$server_console_fifo" ]]; then
+            if [[ ! -p "$server_console_fifo" || -L "$server_console_fifo" ]]; then
+                echo "ERROR: Server console path is not a FIFO: $server_console_fifo" >&2
+                exit 1
+            fi
+        else
+            mkfifo -m 600 "$server_console_fifo"
+            server_console_fifo_created=true
+        fi
+        chmod 600 "$server_console_fifo"
+        exec {server_stdin_fd}<>"$server_console_fifo"
+        "$SERVER_DIR/.venv/bin/python" -m endstone \
+            --server-folder "$SERVER_DIR/bedrock_server" \
+            --yes \
+            --interactive <&"$server_stdin_fd" &
+    else
+        exec {server_stdin_fd}< <(tail -f /dev/null)
+        server_stdin_pid=$!
+        "$SERVER_DIR/.venv/bin/python" -m endstone \
+            --server-folder "$SERVER_DIR/bedrock_server" \
+            --yes \
+            --no-interactive <&"$server_stdin_fd" &
+    fi
     server_pid=$!
     if wait "$server_pid"; then
         exit_code=0

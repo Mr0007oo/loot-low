@@ -67,12 +67,12 @@ class FunPlugins(Plugin):
         },
         "roll": {
             "description": "Roll a die (optionally choose 2-1000 sides)",
-            "usages": ["/roll [sides]"],
+            "usages": ["/roll [sides: int]"],
             "permissions": ["funplugins.roll"],
         },
         "magic8ball": {
             "description": "Ask the magic 8-ball a question",
-            "usages": ["/magic8ball <question>"],
+            "usages": ["/magic8ball <question: message>"],
             "permissions": ["funplugins.magic8ball"],
         },
         "sethome": {
@@ -87,7 +87,7 @@ class FunPlugins(Plugin):
         },
         "setwaypoint": {
             "description": "Save your current location as a named waypoint",
-            "usages": ["/setwaypoint <name>"],
+            "usages": ["/setwaypoint <name: string>"],
             "permissions": ["funplugins.sethome"],
         },
         "waypointlist": {
@@ -97,12 +97,12 @@ class FunPlugins(Plugin):
         },
         "waypoint": {
             "description": "Teleport to one of your saved waypoints",
-            "usages": ["/waypoint <name>"],
+            "usages": ["/waypoint <name: string>"],
             "permissions": ["funplugins.home"],
         },
         "tpa": {
             "description": "Request to teleport to another player",
-            "usages": ["/tpa <player>"],
+            "usages": ["/tpa <player: message>"],
             "permissions": ["funplugins.tpa"],
         },
         "tpaccept": {

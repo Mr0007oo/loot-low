@@ -93,7 +93,7 @@ class PvPDuelsPlugin(Plugin):
     commands = {
         "pvp": {
             "description": "Challenge a player to a graphical kit duel",
-            "usages": ["/pvp <player_name>"],
+            "usages": ["/pvp <player_name: message>"],
             "permissions": ["pvpduels.challenge"],
         },
         "pvpaccept": {

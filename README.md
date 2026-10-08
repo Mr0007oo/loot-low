@@ -108,8 +108,10 @@ protection plugin is unavailable.
 
 The server listens on UDP 19132, binds to `0.0.0.0`, allows supported outdated
 clients, and disables server telemetry in `server/server.properties`. The
-configured view distance is 8 chunks and tick distance is 4 chunks to limit
-server workload while retaining normal gameplay.
+configured view distance is 6 chunks and tick distance is 4 chunks to limit
+chunk generation, bandwidth, and server tick pressure. This can reduce
+server-side latency spikes, but stable end-to-end ping still depends on the
+player-to-FRP route and the GitHub Actions runner's location and load.
 
 ## World data
 

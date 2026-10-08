@@ -34,6 +34,8 @@ class BedrockRuntimeTests(unittest.TestCase):
                 for key in (
                     "server-port",
                     "server-ip",
+                    "view-distance",
+                    "tick-distance",
                     "allow-outdated-client",
                     "emit-server-telemetry",
                 )
@@ -41,6 +43,8 @@ class BedrockRuntimeTests(unittest.TestCase):
             {
                 "server-port": "19132",
                 "server-ip": "0.0.0.0",
+                "view-distance": "6",
+                "tick-distance": "4",
                 "allow-outdated-client": "true",
                 "emit-server-telemetry": "false",
             },

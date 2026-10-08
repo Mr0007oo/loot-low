@@ -28,7 +28,7 @@ class WorldEditPlugin(Plugin):
         },
         "wefill": {
             "description": "Fill your selected region with a block (maximum 512)",
-            "usages": ["/wefill <block_type>"],
+            "usages": ["/wefill <block_type: block>"],
             "permissions": ["worldedit.fill"],
         },
     }

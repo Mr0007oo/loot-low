@@ -54,6 +54,7 @@ class BedrockRuntimeTests(unittest.TestCase):
         self.assertIn("pip uninstall", launcher)
         self.assertEqual(launcher.count("pip install"), 8)
         self.assertIn('pip install --disable-pip-version-check "$wheel"', launcher)
+        self.assertIn('--interactive <&"$server_stdin_fd" &', launcher)
         self.assertIn('"$SERVER_DIR/plugins/server_utils"', launcher)
         self.assertIn('"$SERVER_DIR/plugins/fun_plugins"', launcher)
         self.assertIn('"$SERVER_DIR/plugins/vein_miner"', launcher)
@@ -63,6 +64,9 @@ class BedrockRuntimeTests(unittest.TestCase):
         self.assertIn('"$SERVER_DIR/plugins/world_edit"', launcher)
         self.assertIn("exec {server_stdin_fd}< <(tail -f /dev/null)", launcher)
         self.assertIn('--no-interactive <&"$server_stdin_fd" &', launcher)
+        self.assertIn("printf 'stop\\n'", launcher)
+        self.assertIn('pgrep -P "$server_pid" -x bedrock_server', launcher)
+        self.assertIn('kill -INT "$native_pid"', launcher)
         self.assertIn("close_server_stdin", launcher)
 
         plugin_manifest = root / "server" / "plugins" / "server_utils" / "pyproject.toml"
@@ -147,6 +151,10 @@ class BedrockRuntimeTests(unittest.TestCase):
         self.assertIn("python3 scripts/persist_world.py", workflow)
         self.assertIn("persist-credentials: true", workflow)
         self.assertIn("token: ${{ github.token }}", workflow)
+        self.assertIn("TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}", workflow)
+        self.assertIn("TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}", workflow)
+        self.assertIn("python3 scripts/telegram_console.py", workflow)
+        self.assertIn("Telegram admin requested graceful server shutdown.", workflow)
         self.assertIn("if: ${{ always() }}", workflow)
         self.assertIn("vars.WORLD_RECOVERY_COMMIT", workflow)
         self.assertIn("--restore-only", workflow)
@@ -233,7 +241,10 @@ class BedrockRuntimeTests(unittest.TestCase):
             'self._take_item(sender, args[1:], sender.ender_chest, "Ender Chest", "ender")',
             containers_source,
         )
-        self.assertIn("/ec store <inventory_slot> <ender_store_slot>", containers_source)
+        self.assertIn(
+            "/ec store <inventory_slot: int> <ender_store_slot: int>",
+            containers_source,
+        )
         self.assertIn("BACKPACK_SIZE = 27", containers_source)
         self.assertIn("self.backpacks:", containers_source)
         self.assertIn("Your personal Ender Chest is available from anywhere.", containers_source)
@@ -342,8 +353,8 @@ class BedrockRuntimeTests(unittest.TestCase):
         self.assertIn('"pos1"', world_edit_source)
         self.assertIn('"pos2"', world_edit_source)
         self.assertIn('"wefill"', world_edit_source)
-        self.assertIn('"/wefill <block_type>"', world_edit_source)
-        self.assertNotIn('"/fill <block_type>"', world_edit_source)
+        self.assertIn('"/wefill <block_type: block>"', world_edit_source)
+        self.assertNotIn('"/fill <block_type: block>"', world_edit_source)
         self.assertIn("claim_plugin.can_modify(", world_edit_source)
         self.assertNotIn("from endstone.block import BlockType", world_edit_source)
         self.assertIn(".set_type(block_id)", world_edit_source)
@@ -385,8 +396,11 @@ class BedrockRuntimeTests(unittest.TestCase):
                     text=True,
                 )
             (worktree / "README").write_text("initial\n", encoding="utf-8")
+            player_data = worktree / "server" / "player_data"
+            player_data.mkdir(parents=True)
+            (player_data / ".gitkeep").write_text("\n", encoding="utf-8")
             subprocess.run(
-                ["git", "add", "README"],
+                ["git", "add", "README", "server/player_data/.gitkeep"],
                 cwd=worktree,
                 check=True,
                 capture_output=True,
@@ -416,6 +430,10 @@ class BedrockRuntimeTests(unittest.TestCase):
             (worktree / ".gitignore").write_text("server/world/\n", encoding="utf-8")
             (worktree / "server" / "world").mkdir(parents=True)
             (worktree / "server" / "world" / "level.dat").write_bytes(b"world")
+            (player_data / "fun_plugins.json").write_text(
+                '{"version": 1, "homes": {}, "waypoints": {}}\n',
+                encoding="utf-8",
+            )
             (worktree / "unrelated.txt").write_text("keep staged\n", encoding="utf-8")
             subprocess.run(
                 ["git", "add", ".gitignore", "unrelated.txt"],
@@ -456,7 +474,10 @@ class BedrockRuntimeTests(unittest.TestCase):
                 capture_output=True,
                 text=True,
             ).stdout.splitlines()
-            self.assertEqual(changed_paths, ["server/world/level.dat"])
+            self.assertEqual(
+                changed_paths,
+                ["server/player_data/fun_plugins.json", "server/world/level.dat"],
+            )
             remaining_staged = subprocess.run(
                 ["git", "diff", "--cached", "--name-only"],
                 cwd=worktree,

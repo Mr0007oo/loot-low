@@ -18,8 +18,8 @@ class ContainerPlugins(Plugin):
             "description": "View and manage your remote Ender Chest",
             "usages": [
                 "/ec",
-                "/ec store <inventory_slot> <ender_store_slot>",
-                "/ec take <ender_take_slot>",
+                "/ec store <inventory_slot: int> <ender_store_slot: int>",
+                "/ec take <ender_take_slot: int>",
             ],
             "permissions": ["containers.enderchest"],
         },
@@ -27,8 +27,8 @@ class ContainerPlugins(Plugin):
             "description": "View and manage your portable backpack",
             "usages": [
                 "/backpack",
-                "/backpack store <inventory_slot> <bag_store_slot>",
-                "/backpack take <bag_take_slot>",
+                "/backpack store <inventory_slot: int> <bag_store_slot: int>",
+                "/backpack take <bag_take_slot: int>",
             ],
             "permissions": ["containers.backpack"],
         },

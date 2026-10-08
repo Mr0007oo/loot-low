@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import io
 import os
 import tempfile
@@ -9,7 +10,11 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 
-from scripts.telegram_console import TelegramApi, TelegramApiError, TelegramConsole
+from scripts.telegram_console import (
+    TelegramApi,
+    TelegramApiError,
+    TelegramConsole,
+)
 
 
 class FakeTelegramApi:
@@ -146,6 +151,47 @@ class TelegramConsoleTests(unittest.TestCase):
         self.assertIn("HTTP 409", str(raised.exception))
         self.assertIn("another poller", str(raised.exception))
         self.assertNotIn("do-not-log-this-token", str(raised.exception))
+
+    def test_repeated_poll_conflicts_back_off_without_log_flood(self) -> None:
+        class ConflictingApi(FakeTelegramApi):
+            poll_failures = 0
+
+            def request(self, method: str, payload: dict[str, Any]) -> Any:
+                self.requests.append((method, payload))
+                if method == "getUpdates" and payload.get("timeout") == 0:
+                    return []
+                if method == "getUpdates":
+                    self.poll_failures += 1
+                    if self.poll_failures <= 3:
+                        raise TelegramApiError(
+                            "Telegram API getUpdates returned HTTP 409: another poller",
+                            status_code=409,
+                        )
+                    return [
+                        {
+                            "update_id": 10,
+                            "message": {
+                                "chat": {"id": 123456789, "type": "private"},
+                                "text": "/stop",
+                            },
+                        }
+                    ]
+                return True
+
+        self.console.api = ConflictingApi()  # type: ignore[assignment]
+        output = io.StringIO()
+        with (
+            patch("scripts.telegram_console.time.sleep") as mocked_sleep,
+            contextlib.redirect_stderr(output),
+        ):
+            self.console.run()
+
+        self.assertEqual(output.getvalue().count("Telegram polling failed:"), 1)
+        self.assertIn("HTTP 409: another poller", output.getvalue())
+        self.assertEqual(
+            [call.args[0] for call in mocked_sleep.call_args_list],
+            [5, 10, 20],
+        )
 
 
 if __name__ == "__main__":

@@ -16,10 +16,15 @@ from typing import Any
 
 POLL_TIMEOUT_SECONDS = 30
 MAX_COMMAND_BYTES = 1_024
+POLL_RETRY_INITIAL_SECONDS = 5
+POLL_RETRY_MAX_SECONDS = 60
+POLL_ERROR_LOG_INTERVAL_SECONDS = 300
 
 
 class TelegramApiError(RuntimeError):
-    pass
+    def __init__(self, message: str, *, status_code: int | None = None) -> None:
+        super().__init__(message)
+        self.status_code = status_code
 
 
 class TelegramApi:
@@ -47,7 +52,8 @@ class TelegramApi:
             detail = description if isinstance(description, str) else str(exc.reason)
             detail = " ".join(detail.split())[:240]
             raise TelegramApiError(
-                f"Telegram API {method} returned HTTP {exc.code}: {detail}"
+                f"Telegram API {method} returned HTTP {exc.code}: {detail}",
+                status_code=exc.code,
             ) from None
         except (
             OSError,
@@ -66,8 +72,10 @@ class TelegramApi:
                 if not isinstance(description, str):
                     description = "request rejected"
                 description = " ".join(description.split())[:240]
+                status_code = error_code if isinstance(error_code, int) else None
                 raise TelegramApiError(
-                    f"Telegram API {method} returned error {error_code}: {description}"
+                    f"Telegram API {method} returned error {error_code}: {description}",
+                    status_code=status_code,
                 )
             raise TelegramApiError(f"Telegram API {method} returned an invalid response")
         return result.get("result")
@@ -104,6 +112,9 @@ class TelegramConsole:
                 self.offset = max(update_ids) + 1
 
         self._reply("Telegram console is online. Use /help for commands.")
+        retry_delay = POLL_RETRY_INITIAL_SECONDS
+        last_poll_error = ""
+        last_poll_error_logged_at = 0.0
         while True:
             poll_payload: dict[str, Any] = {
                 "timeout": POLL_TIMEOUT_SECONDS,
@@ -114,12 +125,24 @@ class TelegramConsole:
             try:
                 updates = self.api.request("getUpdates", poll_payload)
             except TelegramApiError as exc:
-                print(
-                    f"Telegram polling failed: {exc}; retrying shortly.",
-                    file=sys.stderr,
-                )
-                time.sleep(5)
+                error = str(exc)
+                now = time.monotonic()
+                if (
+                    error != last_poll_error
+                    or now - last_poll_error_logged_at >= POLL_ERROR_LOG_INTERVAL_SECONDS
+                ):
+                    print(
+                        f"Telegram polling failed: {error}; retrying in {retry_delay}s.",
+                        file=sys.stderr,
+                        flush=True,
+                    )
+                    last_poll_error = error
+                    last_poll_error_logged_at = now
+                time.sleep(retry_delay)
+                retry_delay = min(retry_delay * 2, POLL_RETRY_MAX_SECONDS)
                 continue
+            retry_delay = POLL_RETRY_INITIAL_SECONDS
+            last_poll_error = ""
             if not isinstance(updates, list):
                 raise TelegramApiError("Telegram returned an invalid updates response")
             for update in updates:

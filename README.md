@@ -127,6 +127,8 @@ The workflow preserves Bedrock world and access data and pushes world progress
 to `main` hourly and after a graceful shutdown or workflow cancellation. The
 sync also includes the explicitly tracked `server/world/` and `server/worlds/`
 directories when present; transient lock and temporary files are excluded.
+The Bedrock world cache is keyed by the configured seed so a seed change starts
+a fresh world instead of restoring the previous seed's cached world.
 Only those world paths, the active Bedrock world, and Bedrock access files are
 staged for persistence.
 The Endstone runtime and generated virtual environment are downloaded on

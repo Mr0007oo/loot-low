@@ -38,10 +38,20 @@ class TelegramApi:
                 timeout=POLL_TIMEOUT_SECONDS + 10,
             ) as response:
                 result = json.loads(response.read().decode("utf-8"))
+        except urllib.error.HTTPError as exc:
+            try:
+                body = json.loads(exc.read().decode("utf-8"))
+            except (UnicodeDecodeError, json.JSONDecodeError):
+                body = {}
+            description = body.get("description") if isinstance(body, dict) else None
+            detail = description if isinstance(description, str) else str(exc.reason)
+            detail = " ".join(detail.split())[:240]
+            raise TelegramApiError(
+                f"Telegram API {method} returned HTTP {exc.code}: {detail}"
+            ) from None
         except (
             OSError,
             TimeoutError,
-            urllib.error.URLError,
             UnicodeDecodeError,
             json.JSONDecodeError,
         ) as exc:
@@ -50,7 +60,16 @@ class TelegramApi:
             ) from None
 
         if not isinstance(result, dict) or result.get("ok") is not True:
-            raise TelegramApiError(f"Telegram API {method} request was rejected")
+            if isinstance(result, dict):
+                error_code = result.get("error_code", "unknown")
+                description = result.get("description", "request rejected")
+                if not isinstance(description, str):
+                    description = "request rejected"
+                description = " ".join(description.split())[:240]
+                raise TelegramApiError(
+                    f"Telegram API {method} returned error {error_code}: {description}"
+                )
+            raise TelegramApiError(f"Telegram API {method} returned an invalid response")
         return result.get("result")
 
 
@@ -86,17 +105,19 @@ class TelegramConsole:
 
         self._reply("Telegram console is online. Use /help for commands.")
         while True:
+            poll_payload: dict[str, Any] = {
+                "timeout": POLL_TIMEOUT_SECONDS,
+                "allowed_updates": ["message"],
+            }
+            if self.offset is not None:
+                poll_payload["offset"] = self.offset
             try:
-                updates = self.api.request(
-                    "getUpdates",
-                    {
-                        "offset": self.offset,
-                        "timeout": POLL_TIMEOUT_SECONDS,
-                        "allowed_updates": ["message"],
-                    },
+                updates = self.api.request("getUpdates", poll_payload)
+            except TelegramApiError as exc:
+                print(
+                    f"Telegram polling failed: {exc}; retrying shortly.",
+                    file=sys.stderr,
                 )
-            except TelegramApiError:
-                print("Telegram polling failed; retrying shortly.", file=sys.stderr)
                 time.sleep(5)
                 continue
             if not isinstance(updates, list):

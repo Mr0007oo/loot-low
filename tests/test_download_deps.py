@@ -101,6 +101,8 @@ class BedrockRuntimeTests(unittest.TestCase):
         self.assertIn("Server utilities enabled.", workflow)
         self.assertIn("fun_plugins", workflow)
         self.assertIn("Fun command utilities enabled.", workflow)
+        self.assertIn("Remote Ender Chest enabled.", workflow)
+        self.assertNotIn("Container commands enabled.", workflow)
         self.assertIn("Validate native server code and configuration", workflow)
         self.assertIn("Land Claims enabled", workflow)
         self.assertIn("World Edit enabled (512-block fill limit).", workflow)

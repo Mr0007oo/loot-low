@@ -124,7 +124,26 @@ class BedrockRuntimeTests(unittest.TestCase):
         self.assertIn('"roll"', fun_source)
         self.assertIn('"magic8ball"', fun_source)
         self.assertIn("ROLL_MAX_SIDES = 1_000", fun_source)
-        for command in ("sethome", "home", "tpa", "tpaccept", "tpdeny"):
+        for command in (
+            "cf",
+            "r",
+            "m8",
+            "sethome",
+            "home",
+            "sh",
+            "h",
+            "setwaypoint",
+            "sw",
+            "waypoint",
+            "w",
+            "wl",
+            "tpa",
+            "tpr",
+            "tpaccept",
+            "tpy",
+            "tpdeny",
+            "tpn",
+        ):
             self.assertIn(f'        "{command}": {{', fun_source)
         self.assertIn("self.homes, self.waypoints = self._load_data()", fun_source)
         self.assertIn("self.tpa_requests = {}", fun_source)
@@ -285,6 +304,10 @@ class BedrockRuntimeTests(unittest.TestCase):
         self.assertIn("ARENA_MIN_Z = 989", duels_source)
         self.assertIn("ARENA_MAX_Z = 1_011", duels_source)
         self.assertIn("self._ensure_arena()", duels_source)
+        self.assertIn("self._teleport_match_players(", duels_source)
+        self.assertIn("retries_remaining=1", duels_source)
+        self.assertIn("retrying both players next tick", duels_source)
+        self.assertIn("could not generate the sky arena", duels_source)
         self.assertIn("def _arena_blueprint()", duels_source)
         self.assertIn("block.set_type(block_type, apply_physics=False)", duels_source)
         self.assertIn("ARENA_Z - ARENA_SPAWN_Z_OFFSET", duels_source)
@@ -905,6 +928,23 @@ class BedrockRuntimeTests(unittest.TestCase):
         ).read_text(encoding="utf-8")
         self.assertIn("ENDSTONE_VERSION: 0.11.2", workflow)
         self.assertIn("BEDROCK_CLIENT_VERSION: 1.26.2", workflow)
+        self.assertIn("server_started_at=$SECONDS", workflow)
+        self.assertIn(
+            "warning_after_seconds=$((5 * 60 * 60 + 20 * 60))",
+            workflow,
+        )
+        self.assertIn(
+            "shutdown_after_seconds=$((5 * 60 * 60 + 25 * 60))",
+            workflow,
+        )
+        self.assertIn(
+            "printf 'say Server time is up. The server will shut down in 5 minutes;",
+            workflow,
+        )
+        self.assertIn(
+            'echo "Server runtime reached 5 hours 25 minutes; requesting graceful shutdown."',
+            workflow,
+        )
 
     def test_watchdog_restarts_clean_server_exit_and_stays_alive(self) -> None:
         with tempfile.TemporaryDirectory() as temp:

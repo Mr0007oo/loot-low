@@ -131,7 +131,10 @@ class PvPDuelsPlugin(Plugin):
         self.pending_restores: set[UUID] = set()
         self.active_match: DuelMatch | None = None
         self.arena_dimension = self._find_overworld()
-        self._ensure_arena()
+        if not self._ensure_arena():
+            self.logger.error(
+                "PvP Duels could not generate the sky arena; duels will retry generation when accepted."
+            )
         self.register_events(self)
         self.logger.info(
             f"PvP Duels enabled (sky arena at {ARENA_X:g}, {ARENA_Y:g}, {ARENA_Z:g})."
@@ -394,16 +397,58 @@ class PvPDuelsPlugin(Plugin):
         )
         self._equip_loadout(challenger, challenger_loadout)
         self._equip_loadout(target, target_loadout)
-        if not challenger.teleport(challenger_spawn):
-            self._rollback_start(challenger, target)
-            return
-        if not target.teleport(target_spawn):
-            self._rollback_start(challenger, target)
+        self.server.scheduler.run_task(
+            self,
+            lambda: self._teleport_match_players(
+                match,
+                challenger,
+                target,
+                challenger_spawn,
+                target_spawn,
+                retries_remaining=1,
+            ),
+            delay=1,
+        )
+
+    def _teleport_match_players(
+        self,
+        match: DuelMatch,
+        challenger: Player,
+        target: Player,
+        challenger_spawn: Location,
+        target_spawn: Location,
+        *,
+        retries_remaining: int,
+    ) -> None:
+        if self.active_match is not match:
             return
 
-        message = f"{challenger.name} and {target.name} started a {challenge.kit_name} duel!"
-        challenger.send_message(message)
-        target.send_message(message)
+        if challenger.teleport(challenger_spawn) and target.teleport(target_spawn):
+            message = f"{challenger.name} and {target.name} started a {match.challenge.kit_name} duel!"
+            challenger.send_message(message)
+            target.send_message(message)
+            return
+
+        if retries_remaining:
+            self.logger.warning(
+                "A PvP arena teleport was rejected; retrying both players next tick."
+            )
+            self.server.scheduler.run_task(
+                self,
+                lambda: self._teleport_match_players(
+                    match,
+                    challenger,
+                    target,
+                    challenger_spawn,
+                    target_spawn,
+                    retries_remaining=retries_remaining - 1,
+                ),
+                delay=1,
+            )
+            return
+
+        self.logger.error("Could not teleport both PvP players to the generated sky arena.")
+        self._rollback_start(challenger, target)
 
     def _rollback_start(self, challenger: Player, target: Player) -> None:
         self.active_match = None

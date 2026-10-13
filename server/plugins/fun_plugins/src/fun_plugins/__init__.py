@@ -16,6 +16,19 @@ from endstone.plugin import Plugin
 ROLL_DEFAULT_SIDES = 6
 ROLL_MAX_SIDES = 1_000
 AUTOSAVE_TICKS = 20 * 60 * 60
+COMMAND_ALIASES = {
+    "cf": "coinflip",
+    "r": "roll",
+    "m8": "magic8ball",
+    "h": "home",
+    "sh": "sethome",
+    "w": "waypoint",
+    "sw": "setwaypoint",
+    "wl": "waypointlist",
+    "tpr": "tpa",
+    "tpy": "tpaccept",
+    "tpn": "tpdeny",
+}
 EIGHT_BALL_ANSWERS = (
     "Absolutely!",
     "The odds look good.",
@@ -65,14 +78,29 @@ class FunPlugins(Plugin):
             "usages": ["/coinflip"],
             "permissions": ["funplugins.coinflip"],
         },
+        "cf": {
+            "description": "Flip a coin",
+            "usages": ["/cf"],
+            "permissions": ["funplugins.coinflip"],
+        },
         "roll": {
             "description": "Roll a die (optionally choose 2-1000 sides)",
             "usages": ["/roll [sides: int]"],
             "permissions": ["funplugins.roll"],
         },
+        "r": {
+            "description": "Roll a die (optionally choose 2-1000 sides)",
+            "usages": ["/r [sides: int]"],
+            "permissions": ["funplugins.roll"],
+        },
         "magic8ball": {
             "description": "Ask the magic 8-ball a question",
             "usages": ["/magic8ball <question: message>"],
+            "permissions": ["funplugins.magic8ball"],
+        },
+        "m8": {
+            "description": "Ask the magic 8-ball a question",
+            "usages": ["/m8 <question: message>"],
             "permissions": ["funplugins.magic8ball"],
         },
         "sethome": {
@@ -85,9 +113,24 @@ class FunPlugins(Plugin):
             "usages": ["/home"],
             "permissions": ["funplugins.home"],
         },
+        "sh": {
+            "description": "Set your home at your current location",
+            "usages": ["/sh"],
+            "permissions": ["funplugins.sethome"],
+        },
+        "h": {
+            "description": "Teleport to your saved home",
+            "usages": ["/h"],
+            "permissions": ["funplugins.home"],
+        },
         "setwaypoint": {
             "description": "Save your current location as a named waypoint",
             "usages": ["/setwaypoint <name: string>"],
+            "permissions": ["funplugins.sethome"],
+        },
+        "sw": {
+            "description": "Save your current location as a named waypoint",
+            "usages": ["/sw <name: string>"],
             "permissions": ["funplugins.sethome"],
         },
         "waypointlist": {
@@ -95,9 +138,19 @@ class FunPlugins(Plugin):
             "usages": ["/waypointlist"],
             "permissions": ["funplugins.home"],
         },
+        "wl": {
+            "description": "List your saved waypoints",
+            "usages": ["/wl"],
+            "permissions": ["funplugins.home"],
+        },
         "waypoint": {
             "description": "Teleport to one of your saved waypoints",
             "usages": ["/waypoint <name: string>"],
+            "permissions": ["funplugins.home"],
+        },
+        "w": {
+            "description": "Teleport to one of your saved waypoints",
+            "usages": ["/w <name: string>"],
             "permissions": ["funplugins.home"],
         },
         "tpa": {
@@ -105,14 +158,29 @@ class FunPlugins(Plugin):
             "usages": ["/tpa <player: message>"],
             "permissions": ["funplugins.tpa"],
         },
+        "tpr": {
+            "description": "Request to teleport to another player",
+            "usages": ["/tpr <player: message>"],
+            "permissions": ["funplugins.tpa"],
+        },
         "tpaccept": {
             "description": "Accept a pending teleport request",
             "usages": ["/tpaccept"],
             "permissions": ["funplugins.tpaccept"],
         },
+        "tpy": {
+            "description": "Accept a pending teleport request",
+            "usages": ["/tpy"],
+            "permissions": ["funplugins.tpaccept"],
+        },
         "tpdeny": {
             "description": "Deny a pending teleport request",
             "usages": ["/tpdeny"],
+            "permissions": ["funplugins.tpdeny"],
+        },
+        "tpn": {
+            "description": "Deny a pending teleport request",
+            "usages": ["/tpn"],
             "permissions": ["funplugins.tpdeny"],
         },
     }
@@ -176,11 +244,12 @@ class FunPlugins(Plugin):
         self._save_data()
 
     def on_command(self, sender: CommandSender, command: Command, args: list[str]) -> bool:
-        if command.name == "coinflip":
+        command_name = COMMAND_ALIASES.get(command.name, command.name)
+        if command_name == "coinflip":
             sender.send_message(f"Coin flip: {secrets.choice(('Heads', 'Tails'))}!")
             return True
 
-        if command.name == "roll":
+        if command_name == "roll":
             if len(args) > 1:
                 sender.send_message("Error: Usage: /roll [sides]")
                 return True
@@ -198,14 +267,14 @@ class FunPlugins(Plugin):
             sender.send_message(f"You rolled {secrets.randbelow(sides) + 1} (d{sides}).")
             return True
 
-        if command.name == "magic8ball":
+        if command_name == "magic8ball":
             if not args:
                 sender.send_message("Error: Usage: /magic8ball <question>")
                 return True
             sender.send_message(f"Magic 8-ball: {secrets.choice(EIGHT_BALL_ANSWERS)}")
             return True
 
-        if command.name in (
+        if command_name in (
             "sethome",
             "home",
             "setwaypoint",
@@ -219,7 +288,7 @@ class FunPlugins(Plugin):
                 sender.send_message("Error: This command can only be used by a player.")
                 return True
 
-        if command.name == "sethome":
+        if command_name == "sethome":
             if args:
                 sender.send_message("Error: Usage: /sethome")
                 return True
@@ -232,7 +301,7 @@ class FunPlugins(Plugin):
             sender.send_message("Home set at your current location.")
             return True
 
-        if command.name == "home":
+        if command_name == "home":
             if args:
                 sender.send_message("Error: Usage: /home")
                 return True
@@ -250,7 +319,7 @@ class FunPlugins(Plugin):
                 sender.send_message("Error: Could not teleport you to your home.")
             return True
 
-        if command.name == "setwaypoint":
+        if command_name == "setwaypoint":
             if len(args) != 1 or not self._valid_waypoint_name(args[0]):
                 sender.send_message("Error: Usage: /setwaypoint <name> (letters, numbers, _ or -).")
                 return True
@@ -267,7 +336,7 @@ class FunPlugins(Plugin):
             sender.send_message(f"Waypoint '{name}' saved at your current location.")
             return True
 
-        if command.name == "waypointlist":
+        if command_name == "waypointlist":
             if args:
                 sender.send_message("Error: Usage: /waypointlist")
                 return True
@@ -278,7 +347,7 @@ class FunPlugins(Plugin):
             sender.send_message("Your waypoints: " + ", ".join(sorted(player_waypoints)))
             return True
 
-        if command.name == "waypoint":
+        if command_name == "waypoint":
             if len(args) != 1:
                 sender.send_message("Error: Usage: /waypoint <name>")
                 return True
@@ -301,7 +370,7 @@ class FunPlugins(Plugin):
                 sender.send_message(f"Error: Could not teleport you to waypoint '{name}'.")
             return True
 
-        if command.name == "tpa":
+        if command_name == "tpa":
             if not args:
                 sender.send_message("Error: Usage: /tpa <player>")
                 return True
@@ -321,7 +390,7 @@ class FunPlugins(Plugin):
             sender.send_message(f"Teleport request sent to {target.name}.")
             return True
 
-        if command.name == "tpaccept":
+        if command_name == "tpaccept":
             if args:
                 sender.send_message("Error: Usage: /tpaccept")
                 return True
@@ -341,7 +410,7 @@ class FunPlugins(Plugin):
                 sender.send_message("Error: Could not teleport the requesting player.")
             return True
 
-        if command.name == "tpdeny":
+        if command_name == "tpdeny":
             if args:
                 sender.send_message("Error: Usage: /tpdeny")
                 return True

@@ -47,11 +47,13 @@ event listeners.
 The `endstone-fun-plugins` package adds `/coinflip`, `/roll [sides]` (2-1000),
 `/magic8ball <question>`, `/sethome`, `/home`, `/setwaypoint <name>`,
 `/waypointlist`, `/waypoint <name>`, `/tpa <player>`, `/tpaccept`, and
-`/tpdeny`. Homes and named waypoints are saved to `server/player_data` on
-change, player disconnect, plugin shutdown, and hourly; this directory is
-included in world-data persistence. Pending teleport requests remain
-session-only. Player-target commands accept quoted names and names split over
-multiple command arguments. These commands are available to all players.
+`/tpdeny`. Short aliases are also supported for convenience: `/cf`, `/r`,
+`/m8`, `/sh`, `/h`, `/sw`, `/w`, `/wl`, `/tpr`, `/tpy`, and `/tpn`.
+Homes and named waypoints are saved to `server/player_data` on change, player
+disconnect, plugin shutdown, and hourly; this directory is included in
+world-data persistence. Pending teleport requests remain session-only.
+Player-target commands accept quoted names and names split over multiple
+command arguments. These commands are available to all players.
 
 The `endstone-vein-miner` plugin automatically breaks up to 32 connected,
 identical ores or logs in survival mode. Use `/veinmine` to toggle it on or off
@@ -112,6 +114,9 @@ configured view distance is 6 chunks and tick distance is 4 chunks to limit
 chunk generation, bandwidth, and server tick pressure. This can reduce
 server-side latency spikes, but stable end-to-end ping still depends on the
 player-to-FRP route and the GitHub Actions runner's location and load.
+The workflow also enforces a server lifecycle timer: it warns players at 5 hours
+20 minutes of runtime and starts a graceful shutdown at 5 hours 25 minutes, so
+operators can restart the instance cleanly after a maintenance window.
 
 ## World data
 

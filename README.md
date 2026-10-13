@@ -30,14 +30,14 @@ an unauthenticated public endpoint; Bedrock does not provide RCON.
   and `/tpn`. Homes and waypoints are saved; teleport requests are temporary.
 - **Vein Miner:** `/veinmine` toggles mining connected matching ores or logs
   while in survival mode.
-- **Remote Ender Chest:** `/ec` opens a chest-style menu synchronized with
-  the player's real Ender Chest. `/ec store <inventory_slot> <ender_store_slot>`
+- **Remote Ender Chest:** `/ec` opens interactive withdraw and deposit forms
+  for the player's real Ender Chest. `/ec store <inventory_slot> <ender_store_slot>`
   and `/ec take <ender_take_slot>` remain available.
-- **PvP Duels:** `/pvp <player>` opens a kit menu and sends the selected-kit
-  challenge to that player. Once accepted with `/pvpaccept` (or the accept
-  button), both players receive the selected loadout and teleport to the sky
-  arena. `/pvpdeny` declines a challenge, and `/spawngolem` is the operator
-  arena command.
+- **PvP Duels:** `/pvp <player>` opens an interactive kit-choice form and sends
+  the selected-kit challenge to that player. Once accepted with `/pvpaccept`
+  (or the accept button), both players receive the selected loadout and
+  teleport to the sky arena. `/pvpdeny` declines a challenge, and
+  `/spawngolem` is the operator arena command.
 - **Land Claims:** `/claim`, `/unclaim`, `/trust <player>`, and
   `/untrust <player>` manage chunk protection.
 - **World Edit:** `/pos1`, `/pos2`, and `/wefill <block_type>` edit a selected

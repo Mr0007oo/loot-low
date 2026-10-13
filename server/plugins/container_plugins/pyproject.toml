@@ -5,9 +5,9 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "endstone-container-plugins"
 version = "1.0.0"
-description = "Inventory UI for remote Ender Chest access in Endstone"
+description = "Interactive remote Ender Chest access for Endstone"
 requires-python = ">=3.10"
-dependencies = ["endstone==0.11.2", "endstone-inventoryui==2.0.6"]
+dependencies = ["endstone==0.11.2"]
 
 [project.entry-points."endstone"]
 container-plugins = "container_plugins:RemoteEnderChestPlugin"

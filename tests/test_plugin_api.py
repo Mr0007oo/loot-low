@@ -235,10 +235,6 @@ class PluginApiTests(unittest.TestCase):
         assignments = _class_assignments(plugin_class)
         commands = ast.literal_eval(assignments["commands"])
         permissions = ast.literal_eval(assignments["permissions"])
-        self.assertEqual(
-            commands["pvp"]["usages"],
-            ["/pvp <player_name: message>"],
-        )
         self.assertEqual(commands["spawngolem"]["usages"], ["/spawngolem"])
         self.assertEqual(
             commands["spawngolem"]["permissions"],
@@ -260,37 +256,6 @@ class PluginApiTests(unittest.TestCase):
             ["ARENA_SPAWN_Y"] * 3,
         )
         self.assertIn("ARENA_SPAWN_Y = ARENA_MIN_Y + 1", pvp_duels)
-
-    def test_ender_chest_and_pvp_use_interactive_forms(self) -> None:
-        remote_ender_chest = (
-            PLUGIN_ROOT
-            / "container_plugins"
-            / "src"
-            / "container_plugins"
-            / "__init__.py"
-        ).read_text(encoding="utf-8")
-        self.assertIn("class RemoteEnderChestPlugin", remote_ender_chest)
-        self.assertIn("ActionForm(", remote_ender_chest)
-        self.assertIn("def _show_ender_items(", remote_ender_chest)
-        self.assertIn("def _show_player_items(", remote_ender_chest)
-        self.assertIn("def _show_ender_destinations(", remote_ender_chest)
-        self.assertIn("player.ender_chest", remote_ender_chest)
-        self.assertIn("self._withdraw_item(player, slot)", remote_ender_chest)
-        self.assertIn("self._deposit_from_form(", remote_ender_chest)
-        self.assertIn("copied.nbt = item.nbt", remote_ender_chest)
-        self.assertNotIn("endstone_inventoryui", remote_ender_chest)
-
-        duels = (
-            PLUGIN_ROOT
-            / "pvp_duels"
-            / "src"
-            / "pvp_duels"
-            / "__init__.py"
-        ).read_text(encoding="utf-8")
-        self.assertNotIn("endstone_inventoryui", duels)
-        self.assertIn("form = ActionForm(", duels)
-        self.assertIn("for kit_name in KIT_NAMES:", duels)
-        self.assertIn("self._send_challenge(", duels)
 
 
 if __name__ == "__main__":

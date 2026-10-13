@@ -18,6 +18,10 @@ including the world seed (`9064150133272194`), are in `server/server.properties`
 
 The server uses Xbox Live authentication. Do not expose command control through
 an unauthenticated public endpoint; Bedrock does not provide RCON.
+Only `Mr0007oo/loot-low` launches the production Bedrock server or persists its
+world. Forks still run validation but skip the production FRP/server steps.
+Telegram long polling belongs to the external controller; the Actions workflow
+does not call `getUpdates`.
 
 ## Plugins
 

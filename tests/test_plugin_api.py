@@ -107,7 +107,7 @@ class PluginApiTests(unittest.TestCase):
                         "m8": ("magic8ball", "/m8 <question: message>"),
                         "h": ("home", "/h"),
                         "sh": ("sethome", "/sh"),
-                        "w": ("waypoint", "/w <name: string>"),
+                        "wp": ("waypoint", "/wp <name: string>"),
                         "sw": ("setwaypoint", "/sw <name: string>"),
                         "wl": ("waypointlist", "/wl"),
                         "tpr": ("tpa", "/tpr <player: message>"),

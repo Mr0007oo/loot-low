@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "endstone-container-plugins"
 version = "1.0.0"
-description = "Ender chest access and in-memory portable backpacks for Endstone"
+description = "Remote Ender Chest access for Endstone"
 requires-python = ">=3.10"
 dependencies = ["endstone==0.11.2"]
 

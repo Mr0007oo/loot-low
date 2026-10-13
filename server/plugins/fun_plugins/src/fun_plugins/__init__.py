@@ -22,7 +22,7 @@ COMMAND_ALIASES = {
     "m8": "magic8ball",
     "h": "home",
     "sh": "sethome",
-    "w": "waypoint",
+    "wp": "waypoint",
     "sw": "setwaypoint",
     "wl": "waypointlist",
     "tpr": "tpa",
@@ -148,9 +148,9 @@ class FunPlugins(Plugin):
             "usages": ["/waypoint <name: string>"],
             "permissions": ["funplugins.home"],
         },
-        "w": {
+        "wp": {
             "description": "Teleport to one of your saved waypoints",
-            "usages": ["/w <name: string>"],
+            "usages": ["/wp <name: string>"],
             "permissions": ["funplugins.home"],
         },
         "tpa": {

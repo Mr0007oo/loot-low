@@ -135,7 +135,7 @@ class BedrockRuntimeTests(unittest.TestCase):
             "setwaypoint",
             "sw",
             "waypoint",
-            "w",
+            "wp",
             "wl",
             "tpa",
             "tpr",
@@ -252,7 +252,7 @@ class BedrockRuntimeTests(unittest.TestCase):
             / "__init__.py"
         ).read_text(encoding="utf-8")
         self.assertIn('"ec"', containers_source)
-        self.assertIn('"backpack"', containers_source)
+        self.assertNotIn('"backpack"', containers_source)
         self.assertIn("sender.ender_chest", containers_source)
         self.assertIn("from endstone.form import ActionForm", containers_source)
         self.assertIn("player.send_form(", containers_source)
@@ -261,19 +261,19 @@ class BedrockRuntimeTests(unittest.TestCase):
         self.assertIn("def _withdraw_slot(", containers_source)
         self.assertIn("def _deposit_slot(", containers_source)
         self.assertIn(
-            'self._store_item(sender, args[1:], sender.ender_chest, "Ender Chest", "ender")',
+            'self._store_item(sender, args[1:], sender.ender_chest, "ender")',
             containers_source,
         )
         self.assertIn(
-            'self._take_item(sender, args[1:], sender.ender_chest, "Ender Chest", "ender")',
+            'self._take_item(sender, args[1:], sender.ender_chest, "ender")',
             containers_source,
         )
         self.assertIn(
             "/ec store <inventory_slot: int> <ender_store_slot: int>",
             containers_source,
         )
-        self.assertIn("BACKPACK_SIZE = 27", containers_source)
-        self.assertIn("self.backpacks:", containers_source)
+        self.assertNotIn("BACKPACK_SIZE", containers_source)
+        self.assertNotIn("self.backpacks", containers_source)
         self.assertIn("Your personal Ender Chest is available from anywhere.", containers_source)
 
         duels_source = (

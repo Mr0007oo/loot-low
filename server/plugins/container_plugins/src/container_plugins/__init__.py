@@ -1,11 +1,10 @@
 from endstone import Player
 from endstone.command import Command, CommandSender
 from endstone.form import ActionForm
-from endstone.inventory import Inventory, ItemStack
+from endstone.inventory import Inventory
 from endstone.plugin import Plugin
 
 
-BACKPACK_SIZE = 27
 PLAYER_STORAGE_SLOTS = 36
 
 
@@ -23,15 +22,6 @@ class ContainerPlugins(Plugin):
             ],
             "permissions": ["containers.enderchest"],
         },
-        "backpack": {
-            "description": "View and manage your portable backpack",
-            "usages": [
-                "/backpack",
-                "/backpack store <inventory_slot: int> <bag_store_slot: int>",
-                "/backpack take <bag_take_slot: int>",
-            ],
-            "permissions": ["containers.backpack"],
-        },
     }
 
     permissions = {
@@ -39,14 +29,9 @@ class ContainerPlugins(Plugin):
             "description": "View your Ender Chest contents",
             "default": True,
         },
-        "containers.backpack": {
-            "description": "View and manage your portable backpack",
-            "default": True,
-        },
     }
 
     def on_enable(self) -> None:
-        self.backpacks: dict[str, list[ItemStack | None]] = {}
         self.logger.info("Container commands enabled.")
 
     def on_command(self, sender: CommandSender, command: Command, args: list[str]) -> bool:
@@ -58,46 +43,16 @@ class ContainerPlugins(Plugin):
                 self._open_ender_chest(sender)
                 return True
             if args[0] == "store":
-                self._store_item(sender, args[1:], sender.ender_chest, "Ender Chest", "ender")
+                self._store_item(sender, args[1:], sender.ender_chest, "ender")
             elif args[0] == "take":
-                self._take_item(sender, args[1:], sender.ender_chest, "Ender Chest", "ender")
+                self._take_item(sender, args[1:], sender.ender_chest, "ender")
             else:
                 sender.send_message(
                     "Error: Usage: /ec [store <inventory_slot> <ender_store_slot>|take <ender_take_slot>]"
                 )
             return True
 
-        if command.name != "backpack":
-            return False
-        if not isinstance(sender, Player):
-            sender.send_message("Error: This command can only be used by a player.")
-            return True
-        if not args:
-            self._show_backpack(sender)
-            return True
-        if args[0] == "store":
-            self._store_item(
-                sender,
-                args[1:],
-                self._get_backpack(sender),
-                "Backpack",
-                "bag",
-            )
-            return True
-        if args[0] == "take":
-            self._take_item(
-                sender,
-                args[1:],
-                self._get_backpack(sender),
-                "Backpack",
-                "bag",
-            )
-            return True
-
-        sender.send_message(
-            "Error: Usage: /backpack [store <inventory_slot> <bag_store_slot>|take <bag_take_slot>]"
-        )
-        return True
+        return False
 
     def _show_inventory(self, player: Player, inventory: Inventory, title: str) -> None:
         entries = [
@@ -291,33 +246,16 @@ class ContainerPlugins(Plugin):
             player.send_message(f"Moved {item.type.id} x{item.amount} to your inventory.")
         self._open_ender_chest(player)
 
-    def _show_backpack(self, player: Player) -> None:
-        backpack = self._get_backpack(player)
-        entries = [
-            f"{slot + 1}: {item.type.id} x{item.amount}"
-            for slot, item in enumerate(backpack)
-            if item is not None
-        ]
-        contents = "; ".join(entries) if entries else "empty"
-        player.send_message(
-            f"Backpack ({BACKPACK_SIZE} slots): {contents}. "
-            "Use /backpack store <inventory_slot> <bag_store_slot> or "
-            "/backpack take <bag_take_slot>."
-        )
-
     def _store_item(
         self,
         player: Player,
         args: list[str],
-        inventory: Inventory | list[ItemStack | None],
-        container_name: str,
+        inventory: Inventory,
         slot_name: str,
     ) -> None:
         if len(args) != 2:
-            command_name = "ec" if container_name == "Ender Chest" else "backpack"
             player.send_message(
-                f"Error: Usage: /{command_name} "
-                f"store <inventory_slot> <{slot_name}_store_slot>"
+                f"Error: Usage: /ec store <inventory_slot> <{slot_name}_store_slot>"
             )
             return
         slots = self._parse_slots(player, args)
@@ -329,90 +267,56 @@ class ContainerPlugins(Plugin):
         if not 1 <= inventory_slot <= player_storage_size:
             player.send_message(f"Error: Inventory slots range from 1 to {player_storage_size}.")
             return
-        container_size = self._container_size(inventory)
-        if not 1 <= container_slot <= container_size:
-            player.send_message(f"Error: {container_name} slots range from 1 to {container_size}.")
+        if not 1 <= container_slot <= inventory.size:
+            player.send_message(f"Error: Ender Chest slots range from 1 to {inventory.size}.")
             return
 
         item = player_inventory.get_item(inventory_slot - 1)
         if item is None:
             player.send_message("Error: That inventory slot is empty.")
             return
-        if self._container_get(inventory, container_slot - 1) is not None:
-            player.send_message(f"Error: That {container_name.lower()} slot is occupied.")
+        if inventory.get_item(container_slot - 1) is not None:
+            player.send_message("Error: That ender chest slot is occupied.")
             return
 
-        self._container_set(inventory, container_slot - 1, item)
+        inventory.set_item(container_slot - 1, item)
         player_inventory.set_item(inventory_slot - 1, None)
-        player.send_message(f"Stored {item.type.id} in {container_name} slot {container_slot}.")
+        player.send_message(f"Stored {item.type.id} in Ender Chest slot {container_slot}.")
 
     def _take_item(
         self,
         player: Player,
         args: list[str],
-        inventory: Inventory | list[ItemStack | None],
-        container_name: str,
+        inventory: Inventory,
         slot_name: str,
     ) -> None:
         if len(args) != 1:
-            command_name = "ec" if container_name == "Ender Chest" else "backpack"
             player.send_message(
-                f"Error: Usage: /{command_name} "
-                f"take <{slot_name}_take_slot>"
+                f"Error: Usage: /ec take <{slot_name}_take_slot>"
             )
             return
         slots = self._parse_slots(player, args)
         if slots is None:
             return
         container_slot = slots[0]
-        container_size = self._container_size(inventory)
-        if not 1 <= container_slot <= container_size:
-            player.send_message(f"Error: {container_name} slots range from 1 to {container_size}.")
+        if not 1 <= container_slot <= inventory.size:
+            player.send_message(f"Error: Ender Chest slots range from 1 to {inventory.size}.")
             return
 
-        item = self._container_get(inventory, container_slot - 1)
+        item = inventory.get_item(container_slot - 1)
         if item is None:
-            player.send_message(f"Error: That {container_name.lower()} slot is empty.")
+            player.send_message("Error: That ender chest slot is empty.")
             return
 
         leftovers = player.inventory.add_item(item)
         if leftovers:
-            self._container_set(
-                inventory,
-                container_slot - 1,
-                next(iter(leftovers.values())),
-            )
+            inventory.set_item(container_slot - 1, next(iter(leftovers.values())))
             player.send_message(
-                f"Error: Your inventory is full; the remaining items stayed in the {container_name.lower()}."
+                "Error: Your inventory is full; the remaining items stayed in the ender chest."
             )
             return
-        self._container_set(inventory, container_slot - 1, None)
+        inventory.set_item(container_slot - 1, None)
         player.send_message(f"Moved {item.type.id} to your inventory.")
-
-    def _get_backpack(self, player: Player) -> list[ItemStack | None]:
-        return self.backpacks.setdefault(str(player.unique_id), [None] * BACKPACK_SIZE)
-
-    @staticmethod
-    def _container_size(inventory: Inventory | list[ItemStack | None]) -> int:
-        return len(inventory) if isinstance(inventory, list) else inventory.size
-
-    @staticmethod
-    def _container_get(
-        inventory: Inventory | list[ItemStack | None],
-        slot: int,
-    ) -> ItemStack | None:
-        return inventory[slot] if isinstance(inventory, list) else inventory.get_item(slot)
-
-    @staticmethod
-    def _container_set(
-        inventory: Inventory | list[ItemStack | None],
-        slot: int,
-        item: ItemStack | None,
-    ) -> None:
-        if isinstance(inventory, list):
-            inventory[slot] = item
-        else:
-            inventory.set_item(slot, item)
 
     @staticmethod
     def _parse_slots(player: Player, args: list[str]) -> list[int] | None:

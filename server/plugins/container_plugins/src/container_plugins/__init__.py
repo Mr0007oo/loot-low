@@ -2,6 +2,8 @@ from uuid import UUID
 
 from endstone import Player
 from endstone.command import Command, CommandSender
+from endstone.event import PlayerQuitEvent, event_handler
+from endstone.form import ActionForm
 from endstone.inventory import Inventory, ItemStack
 from endstone.plugin import Plugin
 from endstone_inventoryui import Menu, MenuTransaction, MenuTransactionResult, MenuType
@@ -35,7 +37,18 @@ class RemoteEnderChestPlugin(Plugin):
     }
 
     def on_enable(self) -> None:
+        self.menus: dict[UUID, Menu] = {}
+        self.opened_menus: set[UUID] = set()
+        self.closed_menus: set[UUID] = set()
+        self.interacted_menus: set[UUID] = set()
+        self.pending_withdrawals: set[tuple[UUID, int]] = set()
+        self.form_fallback_players: set[UUID] = set()
+        self.register_events(self)
         self.logger.info("Remote Ender Chest enabled.")
+
+    def on_disable(self) -> None:
+        for menu in tuple(self.menus.values()):
+            menu.close_all()
 
     def on_command(self, sender: CommandSender, command: Command, args: list[str]) -> bool:
         if command.name != "ec":
@@ -44,7 +57,10 @@ class RemoteEnderChestPlugin(Plugin):
             sender.send_error_message("Error: This command can only be used by a player.")
             return True
         if not args:
-            self._open_ender_chest(sender)
+            if sender.unique_id in self.form_fallback_players:
+                self._show_ender_chest_withdrawals(sender)
+            else:
+                self._open_ender_chest(sender)
             return True
         if args[0] == "store":
             self._store_item(sender, args[1:], sender.ender_chest)
@@ -57,36 +73,188 @@ class RemoteEnderChestPlugin(Plugin):
         return True
 
     def _open_ender_chest(self, player: Player) -> None:
+        player_id = player.unique_id
+        current_menu = self.menus.get(player_id)
+        if current_menu is not None:
+            if player in current_menu.get_viewers() or player_id not in self.closed_menus:
+                player.send_message("Your Ender Chest menu is already open or opening.")
+                return
+            self._clear_menu_state(player_id)
+
         ender_chest = player.ender_chest
-        menu = Menu(MenuType.CHEST, name="Ender Chest")
+        menu_type = (
+            MenuType.DOUBLE_CHEST
+            if ender_chest.size > MenuType.CHEST.container_size
+            else MenuType.CHEST
+        )
+        menu = Menu(menu_type, name="Remote Ender Chest")
 
         for slot in range(min(ender_chest.size, menu.inventory.size)):
             menu.inventory.set_item(slot, self._copy_item(ender_chest.get_item(slot)))
 
-        player_id = player.unique_id
+        self.menus[player_id] = menu
+        self.opened_menus.discard(player_id)
+        self.closed_menus.discard(player_id)
+        self.interacted_menus.discard(player_id)
 
-        def sync_after_transaction(transaction: MenuTransaction) -> MenuTransactionResult:
-            self.server.scheduler.run_task(
-                self,
-                lambda: self._sync_ender_chest(player_id, menu),
-                delay=1,
-            )
-            return transaction.proceed()
+        def handle_withdrawal(transaction: MenuTransaction) -> MenuTransactionResult:
+            slot = transaction.slot
+            withdrawal_key = (transaction.player.unique_id, slot)
+            if (
+                0 <= slot < min(ender_chest.size, menu.inventory.size)
+                and transaction.item_clicked is not None
+                and transaction.item_clicked.type.id != "minecraft:air"
+                and withdrawal_key not in self.pending_withdrawals
+            ):
+                self.interacted_menus.add(player_id)
+                self.pending_withdrawals.add(withdrawal_key)
+                self.server.scheduler.run_task(
+                    self,
+                    lambda: self._withdraw_from_menu(
+                        transaction.player.unique_id,
+                        slot,
+                        menu,
+                    ),
+                    delay=1,
+                )
+                self._schedule_menu_fallback_check(player_id, menu)
+            return transaction.discard()
 
-        menu.set_listener(sync_after_transaction)
+        menu.set_listener(handle_withdrawal)
+        menu.set_open_listener(lambda _: self.opened_menus.add(player_id))
+        menu.set_close_listener(lambda _: self.closed_menus.add(player_id))
         menu.send_to(player)
+        self._schedule_menu_fallback_check(player_id, menu)
 
-    def _sync_ender_chest(self, player_id: UUID, menu: Menu) -> None:
+    def _schedule_menu_fallback_check(self, player_id: UUID, menu: Menu) -> None:
+        self.server.scheduler.run_task(
+            self,
+            lambda: self._fallback_if_menu_did_not_open(player_id, menu),
+            delay=20,
+        )
+
+    def _withdraw_from_menu(self, player_id: UUID, slot: int, menu: Menu) -> None:
+        self.pending_withdrawals.discard((player_id, slot))
         player = self.server.get_player(player_id)
         if player is None:
             return
 
+        self._withdraw_item(player, slot)
+        menu.inventory.set_item(
+            slot,
+            self._copy_item(player.ender_chest.get_item(slot)),
+        )
+
+    def _fallback_if_menu_did_not_open(self, player_id: UUID, menu: Menu) -> None:
+        if self.menus.get(player_id) is not menu:
+            return
+
+        player = self.server.get_player(player_id)
+        if player is None:
+            self._clear_menu_state(player_id)
+            return
+        if player_id in self.opened_menus:
+            if player in menu.get_viewers():
+                return
+            if player_id not in self.interacted_menus:
+                self._clear_menu_state(player_id)
+                return
+
+        self.logger.warning(
+            f"Inventory UI did not open for {player.name}; offering the safe Ender Chest withdrawal form."
+        )
+        menu.close(player)
+        self._clear_menu_state(player_id)
+        self.form_fallback_players.add(player_id)
+        player.send_message(
+            "The chest menu could not be opened by your client. Use the withdrawal list instead."
+        )
+        self._show_ender_chest_withdrawals(player)
+
+    def _show_ender_chest_withdrawals(self, player: Player) -> None:
         ender_chest = player.ender_chest
-        for slot in range(min(ender_chest.size, menu.inventory.size)):
-            ender_chest.set_item(
-                slot,
-                self._copy_item(menu.inventory.get_item(slot)),
+        entries: list[tuple[int, ItemStack, str]] = []
+        for slot in range(ender_chest.size):
+            item = ender_chest.get_item(slot)
+            if item is None:
+                continue
+            meta = item.item_meta
+            item_name = (
+                meta.display_name
+                if meta is not None and meta.has_display_name
+                else item.type.id
             )
+            entries.append((slot, item, item_name))
+
+        form = ActionForm(
+            title="Ender Chest - Withdraw",
+            content=(
+                "Select an item to withdraw. Items that do not fit will remain stored."
+                if entries
+                else "Your Ender Chest is empty."
+            ),
+        )
+        for slot, item, item_name in entries:
+            form.add_button(
+                f"Slot {slot + 1}: {item_name} x{item.amount}",
+                on_click=lambda current_player, selected_slot=slot: self._withdraw_from_form(
+                    current_player,
+                    selected_slot,
+                ),
+            )
+        player.send_form(form)
+
+    def _withdraw_from_form(self, player: Player, slot: int) -> None:
+        self._withdraw_item(player, slot)
+        self._show_ender_chest_withdrawals(player)
+
+    def _withdraw_item(self, player: Player, slot: int) -> bool:
+        ender_chest = player.ender_chest
+        if not 0 <= slot < ender_chest.size:
+            player.send_error_message("Error: Invalid Ender Chest slot.")
+            return False
+
+        item = ender_chest.get_item(slot)
+        if item is None:
+            player.send_message("That Ender Chest slot is already empty.")
+            return False
+
+        offered_item = self._copy_item(item)
+        if offered_item is None:
+            raise RuntimeError(f"Could not copy Ender Chest item in slot {slot}.")
+        leftovers = player.inventory.add_item(offered_item)
+        if leftovers:
+            remaining = self._copy_item(next(iter(leftovers.values())))
+            if remaining is None:
+                raise RuntimeError(f"Could not preserve leftover Ender Chest item in slot {slot}.")
+            moved_amount = item.amount - remaining.amount
+            if moved_amount <= 0:
+                player.send_error_message("Your inventory is full; nothing was withdrawn.")
+                return False
+            ender_chest.set_item(slot, remaining)
+            player.send_message(
+                f"Withdrew {item.type.id} x{moved_amount}; the rest remains in that slot."
+            )
+            return True
+
+        ender_chest.set_item(slot, None)
+        player.send_message(f"Withdrew {item.type.id} x{item.amount} from your Ender Chest.")
+        return True
+
+    def _clear_menu_state(self, player_id: UUID) -> None:
+        self.menus.pop(player_id, None)
+        self.opened_menus.discard(player_id)
+        self.closed_menus.add(player_id)
+        self.interacted_menus.discard(player_id)
+        self.form_fallback_players.discard(player_id)
+        self.pending_withdrawals = {
+            pending for pending in self.pending_withdrawals if pending[0] != player_id
+        }
+
+    @event_handler
+    def on_player_quit(self, event: PlayerQuitEvent) -> None:
+        player_id = event.player.unique_id
+        self._clear_menu_state(player_id)
 
     @staticmethod
     def _copy_item(item: ItemStack | None) -> ItemStack | None:
@@ -95,7 +263,9 @@ class RemoteEnderChestPlugin(Plugin):
         copied = ItemStack(item.type.id, item.amount, item.data)
         meta = item.item_meta
         if meta is not None:
-            copied.set_item_meta(meta.clone())
+            if not copied.set_item_meta(meta.clone()):
+                raise ValueError(f"Could not copy metadata for Ender Chest item {item.type.id}.")
+        copied.nbt = item.nbt
         return copied
 
     def _store_item(

@@ -100,6 +100,45 @@ class PluginApiTests(unittest.TestCase):
                 self.assertTrue(commands, "Plugin has no declared commands")
                 self.assertTrue(entry_point)
 
+                if manifest_path.parent.name == "fun_plugins":
+                    aliases = {
+                        "cf": ("coinflip", "/cf"),
+                        "r": ("roll", "/r [sides: int]"),
+                        "m8": ("magic8ball", "/m8 <question: message>"),
+                        "h": ("home", "/h"),
+                        "sh": ("sethome", "/sh"),
+                        "w": ("waypoint", "/w <name: string>"),
+                        "sw": ("setwaypoint", "/sw <name: string>"),
+                        "wl": ("waypointlist", "/wl"),
+                        "tpr": ("tpa", "/tpr <player: message>"),
+                        "tpy": ("tpaccept", "/tpy"),
+                        "tpn": ("tpdeny", "/tpn"),
+                    }
+                    alias_assignment = next(
+                        node.value
+                        for node in module.body
+                        if isinstance(node, ast.Assign)
+                        and any(
+                            isinstance(target, ast.Name)
+                            and target.id == "COMMAND_ALIASES"
+                            for target in node.targets
+                        )
+                    )
+                    self.assertEqual(
+                        ast.literal_eval(alias_assignment),
+                        {alias: target for alias, (target, _) in aliases.items()},
+                    )
+                    self.assertEqual(
+                        set(commands) - set(aliases),
+                        {target for target, _ in aliases.values()},
+                    )
+                    for alias, (command_name, usage) in aliases.items():
+                        self.assertEqual(commands[alias]["usages"], [usage])
+                        self.assertEqual(
+                            commands[alias]["permissions"],
+                            commands[command_name]["permissions"],
+                        )
+
                 for command_name, command_config in commands.items():
                     self.assertIn("description", command_config, command_name)
                     self.assertTrue(command_config.get("usages"), command_name)

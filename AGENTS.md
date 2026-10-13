@@ -12,7 +12,7 @@ This repo is in the middle of a Bedrock server handoff: the Bedrock process runs
 - Persistence: `scripts/persist_world.py` and `server/start.sh` remain the authoritative lifecycle hooks
 
 ## Hard requirements
-- Keep the server seed at `757067671151835873`
+- Keep the server seed at `9064150133272194`
 - Preserve the pending world reset deletion state; do not restore or reintroduce deleted Bedrock world files
 - Do not run the Bedrock server or persistence workflow locally in a way that writes the live world back to the repo
 - Do not commit secrets or real token values into code

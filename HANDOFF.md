@@ -2,8 +2,8 @@
 
 ## Current state
 - Branch: `telegram-console-pr`
-- Repo: `mr0007-tech/loot-low`
-- PR: https://github.com/mr0007-tech/loot-low/pull/1
+- Repo: `mr0007oo/loot-low`
+- PR: https://github.com/mr000700/loot-low/pull/1
 - Bedrock seed: `757067671151835873`
 
 ## Completed

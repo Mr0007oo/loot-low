@@ -257,6 +257,10 @@ jobs:
             exit 1
           fi
           echo "Native Bedrock server is ready at ${FRP_SERVER_IP}:19132/UDP."
+          server_started_at=$SECONDS
+          warning_after_seconds=$((5 * 60 * 60 + 20 * 60))
+          shutdown_after_seconds=$((5 * 60 * 60 + 25 * 60))
+          warning_sent=false
 
           python3 scripts/telegram_console.py >>"$telegram_log" 2>&1 &
           TELEGRAM_PID=$!
@@ -265,6 +269,27 @@ jobs:
           while true; do
             if [[ -f "$stop_request" ]]; then
               echo "Telegram admin requested graceful server shutdown."
+              kill -TERM "$WATCHDOG_PID" 2>/dev/null || true
+              if wait "$WATCHDOG_PID"; then
+                server_status=0
+              else
+                server_status=$?
+              fi
+              WATCHDOG_PID=""
+              if [[ "$server_status" -ne 0 && "$server_status" -ne 143 ]]; then
+                exit "$server_status"
+              fi
+              exit 0
+            fi
+
+            elapsed_seconds=$((SECONDS - server_started_at))
+            if [[ "$warning_sent" != true ]] && (( elapsed_seconds >= warning_after_seconds )); then
+              printf 'say Server time is up. The server will shut down in 5 minutes; please contact an admin to restart it.\n' >"$console_fifo"
+              echo "Sent the five-minute server shutdown warning to players."
+              warning_sent=true
+            fi
+            if (( elapsed_seconds >= shutdown_after_seconds )); then
+              echo "Server runtime reached 5 hours 25 minutes; requesting graceful shutdown."
               kill -TERM "$WATCHDOG_PID" 2>/dev/null || true
               if wait "$WATCHDOG_PID"; then
                 server_status=0

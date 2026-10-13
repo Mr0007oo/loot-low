@@ -282,9 +282,8 @@ class PluginApiTests(unittest.TestCase):
         self.assertIn("self._withdraw_item(player, slot)", remote_ender_chest)
         self.assertIn("self._copy_item(player.ender_chest.get_item(slot))", remote_ender_chest)
         self.assertIn("copied.nbt = item.nbt", remote_ender_chest)
-        self.assertIn("def _expire_unopened_menu(", remote_ender_chest)
-        self.assertNotIn("ActionForm", remote_ender_chest)
-        self.assertNotIn("send_form(", remote_ender_chest)
+        self.assertIn("Items that do not fit will remain stored.", remote_ender_chest)
+        self.assertIn("self._show_ender_chest_withdrawals(player)", remote_ender_chest)
 
         duels = (
             PLUGIN_ROOT

@@ -30,10 +30,9 @@ an unauthenticated public endpoint; Bedrock does not provide RCON.
   and `/tpn`. Homes and waypoints are saved; teleport requests are temporary.
 - **Vein Miner:** `/veinmine` toggles mining connected matching ores or logs
   while in survival mode.
-- **Remote Ender Chest:** `/ec` opens a chest-style menu showing the player's
-  real Ender Chest; click an item to withdraw it while keeping items that do
-  not fit stored. `/ec store <inventory_slot> <ender_store_slot>` and
-  `/ec take <ender_take_slot>` remain available.
+- **Remote Ender Chest:** `/ec` opens a chest-style menu synchronized with
+  the player's real Ender Chest. `/ec store <inventory_slot> <ender_store_slot>`
+  and `/ec take <ender_take_slot>` remain available.
 - **PvP Duels:** `/pvp <player>` opens a kit menu and sends the selected-kit
   challenge to that player. Once accepted with `/pvpaccept` (or the accept
   button), both players receive the selected loadout and teleport to the sky

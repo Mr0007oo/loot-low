@@ -273,8 +273,9 @@ class BedrockRuntimeTests(unittest.TestCase):
         self.assertIn("self._withdraw_from_menu(", containers_source)
         self.assertIn("self._withdraw_item(player, slot)", containers_source)
         self.assertIn("copied.nbt = item.nbt", containers_source)
-        self.assertIn("items that do not fit will remain stored.", containers_source.lower())
-        self.assertIn("def _fallback_if_menu_did_not_open(", containers_source)
+        self.assertIn("def _expire_unopened_menu(", containers_source)
+        self.assertNotIn("ActionForm", containers_source)
+        self.assertNotIn("send_form(", containers_source)
         self.assertIn(
             '"/ec store <inventory_slot: int> <ender_store_slot: int>"',
             containers_source,

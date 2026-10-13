@@ -72,7 +72,10 @@ class PluginApiTests(unittest.TestCase):
         for manifest_path in manifests:
             with self.subTest(plugin=manifest_path.parent.name):
                 project = tomllib.loads(manifest_path.read_text(encoding="utf-8"))["project"]
-                self.assertEqual(project["dependencies"], ["endstone==0.11.2"])
+                expected_dependencies = ["endstone==0.11.2"]
+                if manifest_path.parent.name in {"container_plugins", "pvp_duels"}:
+                    expected_dependencies.append("endstone-inventoryui==2.0.6")
+                self.assertEqual(project["dependencies"], expected_dependencies)
                 entry_points = project["entry-points"]["endstone"]
                 self.assertEqual(len(entry_points), 1)
                 entry_point, target = next(iter(entry_points.items()))
@@ -235,6 +238,10 @@ class PluginApiTests(unittest.TestCase):
         assignments = _class_assignments(plugin_class)
         commands = ast.literal_eval(assignments["commands"])
         permissions = ast.literal_eval(assignments["permissions"])
+        self.assertEqual(
+            commands["pvp"]["usages"],
+            ["/pvp <player_name: message>"],
+        )
         self.assertEqual(commands["spawngolem"]["usages"], ["/spawngolem"])
         self.assertEqual(
             commands["spawngolem"]["permissions"],
@@ -256,6 +263,38 @@ class PluginApiTests(unittest.TestCase):
             ["ARENA_SPAWN_Y"] * 3,
         )
         self.assertIn("ARENA_SPAWN_Y = ARENA_MIN_Y + 1", pvp_duels)
+
+    def test_inventory_ui_plugins_sync_and_lock_their_menus(self) -> None:
+        remote_ender_chest = (
+            PLUGIN_ROOT
+            / "container_plugins"
+            / "src"
+            / "container_plugins"
+            / "__init__.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn("class RemoteEnderChestPlugin", remote_ender_chest)
+        self.assertIn('depend = ["inventoryui"]', remote_ender_chest)
+        self.assertIn("Menu(MenuType.CHEST, name=", remote_ender_chest)
+        self.assertIn("player.ender_chest", remote_ender_chest)
+        self.assertIn("menu.set_listener(sync_after_transaction)", remote_ender_chest)
+        self.assertIn("self.server.scheduler.run_task(", remote_ender_chest)
+        self.assertIn("return transaction.proceed()", remote_ender_chest)
+        self.assertIn("self._copy_item(menu.inventory.get_item(slot))", remote_ender_chest)
+
+        duels = (
+            PLUGIN_ROOT
+            / "pvp_duels"
+            / "src"
+            / "pvp_duels"
+            / "__init__.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn('depend = ["inventoryui"]', duels)
+        self.assertIn("Menu(MenuType.CHEST, name=", duels)
+        self.assertIn("menu.set_listener(select_kit)", duels)
+        self.assertIn("return transaction.discard()", duels)
+        self.assertIn("self.server.scheduler.run_task(", duels)
+        self.assertIn("self._send_challenge(challenger, target_id, kit_name)", duels)
+        self.assertIn("menu.close(challenger)", duels)
 
 
 if __name__ == "__main__":

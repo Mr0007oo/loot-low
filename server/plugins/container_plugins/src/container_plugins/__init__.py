@@ -41,7 +41,10 @@ class RemoteEnderChestPlugin(Plugin):
             sender.send_error_message("Error: This command can only be used by a player.")
             return True
         if not args:
-            self._open_ender_chest(sender)
+            if sender.unique_id in self.form_fallback_players:
+                self._show_ender_chest_withdrawals(sender)
+            else:
+                self._open_ender_chest(sender)
             return True
         if args[0] == "store":
             self._store_item(sender, args[1:], sender.ender_chest)

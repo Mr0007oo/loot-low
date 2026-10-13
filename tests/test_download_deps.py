@@ -266,10 +266,15 @@ class BedrockRuntimeTests(unittest.TestCase):
         self.assertIn("class RemoteEnderChestPlugin", containers_source)
         self.assertIn("from endstone_inventoryui import", containers_source)
         self.assertIn("player.ender_chest", containers_source)
-        self.assertIn("Menu(MenuType.CHEST", containers_source)
-        self.assertIn("menu.set_listener(sync_after_transaction)", containers_source)
+        self.assertIn("Menu(menu_type, name=", containers_source)
+        self.assertIn("menu.set_listener(handle_withdrawal)", containers_source)
         self.assertIn("self.server.scheduler.run_task(", containers_source)
-        self.assertIn("return transaction.proceed()", containers_source)
+        self.assertIn("return transaction.discard()", containers_source)
+        self.assertIn("self._withdraw_from_menu(", containers_source)
+        self.assertIn("self._withdraw_item(player, slot)", containers_source)
+        self.assertIn("copied.nbt = item.nbt", containers_source)
+        self.assertIn("items that do not fit will remain stored.", containers_source.lower())
+        self.assertIn("def _fallback_if_menu_did_not_open(", containers_source)
         self.assertIn(
             '"/ec store <inventory_slot: int> <ender_store_slot: int>"',
             containers_source,

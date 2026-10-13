@@ -274,12 +274,16 @@ class PluginApiTests(unittest.TestCase):
         ).read_text(encoding="utf-8")
         self.assertIn("class RemoteEnderChestPlugin", remote_ender_chest)
         self.assertIn('depend = ["inventoryui"]', remote_ender_chest)
-        self.assertIn("Menu(MenuType.CHEST, name=", remote_ender_chest)
+        self.assertIn("Menu(menu_type, name=", remote_ender_chest)
         self.assertIn("player.ender_chest", remote_ender_chest)
-        self.assertIn("menu.set_listener(sync_after_transaction)", remote_ender_chest)
+        self.assertIn("menu.set_listener(handle_withdrawal)", remote_ender_chest)
         self.assertIn("self.server.scheduler.run_task(", remote_ender_chest)
-        self.assertIn("return transaction.proceed()", remote_ender_chest)
-        self.assertIn("self._copy_item(menu.inventory.get_item(slot))", remote_ender_chest)
+        self.assertIn("return transaction.discard()", remote_ender_chest)
+        self.assertIn("self._withdraw_item(player, slot)", remote_ender_chest)
+        self.assertIn("self._copy_item(player.ender_chest.get_item(slot))", remote_ender_chest)
+        self.assertIn("copied.nbt = item.nbt", remote_ender_chest)
+        self.assertIn("Items that do not fit will remain stored.", remote_ender_chest)
+        self.assertIn("self._show_ender_chest_withdrawals(player)", remote_ender_chest)
 
         duels = (
             PLUGIN_ROOT

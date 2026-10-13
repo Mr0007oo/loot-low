@@ -226,7 +226,7 @@ jobs:
               && grep -Fq 'Server utilities enabled.' "$server_log" \
               && grep -Fq 'Fun command utilities enabled.' "$server_log" \
               && grep -Fq 'Vein Miner enabled (32-block limit).' "$server_log" \
-              && grep -Fq 'Remote Ender Chest enabled.' "$server_log" \
+              && grep -Fq 'Container commands enabled.' "$server_log" \
               && grep -Fq 'PvP Duels enabled' "$server_log" \
               && grep -Fq 'Land Claims enabled' "$server_log" \
               && grep -Fq 'World Edit enabled (512-block fill limit).' "$server_log"; then

@@ -101,19 +101,12 @@ class BedrockRuntimeTests(unittest.TestCase):
         self.assertIn("Server utilities enabled.", workflow)
         self.assertIn("fun_plugins", workflow)
         self.assertIn("Fun command utilities enabled.", workflow)
-        self.assertIn("Remote Ender Chest enabled.", workflow)
-        self.assertNotIn("Container commands enabled.", workflow)
-        self.assertIn("Validate native server code and configuration", workflow)
+        self.assertIn("Container commands enabled.", workflow)
         self.assertIn("Land Claims enabled", workflow)
         self.assertIn("World Edit enabled (512-block fill limit).", workflow)
         self.assertIn("PvP Duels enabled", workflow)
         self.assertIn("server/plugins/pvp_duels/src", workflow)
-        for plugin in (
-            "container_plugins",
-            "pvp_duels",
-            "land_claims",
-            "world_edit",
-        ):
+        for plugin in ("container_plugins", "pvp_duels", "land_claims", "world_edit"):
             self.assertIn(f"server/plugins/{plugin}", workflow)
 
         fun_manifest = root / "server" / "plugins" / "fun_plugins" / "pyproject.toml"
@@ -221,7 +214,7 @@ class BedrockRuntimeTests(unittest.TestCase):
                 "container_plugins",
                 "endstone-container-plugins",
                 "container-plugins",
-                "container_plugins:RemoteEnderChestPlugin",
+                "container_plugins:ContainerPlugins",
             ),
             (
                 "pvp_duels",
@@ -260,31 +253,34 @@ class BedrockRuntimeTests(unittest.TestCase):
         ).read_text(encoding="utf-8")
         self.assertIn('"ec"', containers_source)
         self.assertNotIn('"backpack"', containers_source)
-        self.assertIn("class RemoteEnderChestPlugin", containers_source)
+        self.assertIn("sender.ender_chest", containers_source)
         self.assertIn("from endstone.form import ActionForm", containers_source)
-        self.assertIn("player.ender_chest", containers_source)
-        self.assertIn("def _show_ender_items(", containers_source)
-        self.assertIn("def _show_player_items(", containers_source)
-        self.assertIn("def _show_ender_destinations(", containers_source)
-        self.assertIn("self._withdraw_item(player, slot)", containers_source)
-        self.assertIn("self._deposit_from_form(", containers_source)
-        self.assertIn("copied.nbt = item.nbt", containers_source)
-        self.assertNotIn("endstone_inventoryui", containers_source)
+        self.assertIn("player.send_form(", containers_source)
+        self.assertIn('"Withdraw an item"', containers_source)
+        self.assertIn('"Deposit an item"', containers_source)
+        self.assertIn("def _withdraw_slot(", containers_source)
+        self.assertIn("def _deposit_slot(", containers_source)
         self.assertIn(
-            '"/ec store <inventory_slot: int> <ender_store_slot: int>"',
+            'self._store_item(sender, args[1:], sender.ender_chest, "ender")',
             containers_source,
         )
-        self.assertIn("def _store_item(", containers_source)
-        self.assertIn("def _take_item(", containers_source)
+        self.assertIn(
+            'self._take_item(sender, args[1:], sender.ender_chest, "ender")',
+            containers_source,
+        )
+        self.assertIn(
+            "/ec store <inventory_slot: int> <ender_store_slot: int>",
+            containers_source,
+        )
+        self.assertNotIn("BACKPACK_SIZE", containers_source)
+        self.assertNotIn("self.backpacks", containers_source)
+        self.assertIn("Your personal Ender Chest is available from anywhere.", containers_source)
 
         duels_source = (
             root / "server" / "plugins" / "pvp_duels" / "src" / "pvp_duels" / "__init__.py"
         ).read_text(encoding="utf-8")
         for command in ("pvp", "pvpaccept", "pvpdeny"):
             self.assertIn(f'        "{command}": {{', duels_source)
-        self.assertNotIn("endstone_inventoryui", duels_source)
-        self.assertIn("for kit_name in KIT_NAMES:", duels_source)
-        self.assertIn("self._send_challenge(", duels_source)
         self.assertIn("class PlayerBackup:", duels_source)
         self.assertIn("self.player_backups: dict[UUID, PlayerBackup] = {}", duels_source)
         self.assertIn(

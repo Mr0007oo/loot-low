@@ -101,12 +101,17 @@ class BedrockRuntimeTests(unittest.TestCase):
         self.assertIn("Server utilities enabled.", workflow)
         self.assertIn("fun_plugins", workflow)
         self.assertIn("Fun command utilities enabled.", workflow)
-        self.assertIn("Container commands enabled.", workflow)
+        self.assertIn("Validate native server code and configuration", workflow)
         self.assertIn("Land Claims enabled", workflow)
         self.assertIn("World Edit enabled (512-block fill limit).", workflow)
         self.assertIn("PvP Duels enabled", workflow)
         self.assertIn("server/plugins/pvp_duels/src", workflow)
-        for plugin in ("container_plugins", "pvp_duels", "land_claims", "world_edit"):
+        for plugin in (
+            "container_plugins",
+            "pvp_duels",
+            "land_claims",
+            "world_edit",
+        ):
             self.assertIn(f"server/plugins/{plugin}", workflow)
 
         fun_manifest = root / "server" / "plugins" / "fun_plugins" / "pyproject.toml"
@@ -135,7 +140,7 @@ class BedrockRuntimeTests(unittest.TestCase):
             "setwaypoint",
             "sw",
             "waypoint",
-            "w",
+            "wp",
             "wl",
             "tpa",
             "tpr",
@@ -214,7 +219,7 @@ class BedrockRuntimeTests(unittest.TestCase):
                 "container_plugins",
                 "endstone-container-plugins",
                 "container-plugins",
-                "container_plugins:ContainerPlugins",
+                "container_plugins:RemoteEnderChestPlugin",
             ),
             (
                 "pvp_duels",
@@ -239,7 +244,10 @@ class BedrockRuntimeTests(unittest.TestCase):
             manifest = root / "server" / "plugins" / folder / "pyproject.toml"
             project = tomllib.loads(manifest.read_text(encoding="utf-8"))["project"]
             self.assertEqual(project["name"], distribution)
-            self.assertEqual(project["dependencies"], ["endstone==0.11.2"])
+            expected_dependencies = ["endstone==0.11.2"]
+            if folder in {"container_plugins", "pvp_duels"}:
+                expected_dependencies.append("endstone-inventoryui==2.0.6")
+            self.assertEqual(project["dependencies"], expected_dependencies)
             self.assertEqual(project["entry-points"]["endstone"][entry_point], target)
 
         containers_source = (
@@ -252,35 +260,31 @@ class BedrockRuntimeTests(unittest.TestCase):
             / "__init__.py"
         ).read_text(encoding="utf-8")
         self.assertIn('"ec"', containers_source)
-        self.assertIn('"backpack"', containers_source)
-        self.assertIn("sender.ender_chest", containers_source)
-        self.assertIn("from endstone.form import ActionForm", containers_source)
-        self.assertIn("player.send_form(", containers_source)
-        self.assertIn('"Withdraw an item"', containers_source)
-        self.assertIn('"Deposit an item"', containers_source)
-        self.assertIn("def _withdraw_slot(", containers_source)
-        self.assertIn("def _deposit_slot(", containers_source)
+        self.assertNotIn('"backpack"', containers_source)
+        self.assertIn("class RemoteEnderChestPlugin", containers_source)
+        self.assertIn("from endstone_inventoryui import", containers_source)
+        self.assertIn("player.ender_chest", containers_source)
+        self.assertIn("Menu(MenuType.CHEST", containers_source)
+        self.assertIn("menu.set_listener(sync_after_transaction)", containers_source)
+        self.assertIn("self.server.scheduler.run_task(", containers_source)
+        self.assertIn("return transaction.proceed()", containers_source)
         self.assertIn(
-            'self._store_item(sender, args[1:], sender.ender_chest, "Ender Chest", "ender")',
+            '"/ec store <inventory_slot: int> <ender_store_slot: int>"',
             containers_source,
         )
-        self.assertIn(
-            'self._take_item(sender, args[1:], sender.ender_chest, "Ender Chest", "ender")',
-            containers_source,
-        )
-        self.assertIn(
-            "/ec store <inventory_slot: int> <ender_store_slot: int>",
-            containers_source,
-        )
-        self.assertIn("BACKPACK_SIZE = 27", containers_source)
-        self.assertIn("self.backpacks:", containers_source)
-        self.assertIn("Your personal Ender Chest is available from anywhere.", containers_source)
+        self.assertIn("def _store_item(", containers_source)
+        self.assertIn("def _take_item(", containers_source)
 
         duels_source = (
             root / "server" / "plugins" / "pvp_duels" / "src" / "pvp_duels" / "__init__.py"
         ).read_text(encoding="utf-8")
         for command in ("pvp", "pvpaccept", "pvpdeny"):
             self.assertIn(f'        "{command}": {{', duels_source)
+        self.assertIn("from endstone_inventoryui import", duels_source)
+        self.assertIn("menu.set_listener(select_kit)", duels_source)
+        self.assertIn("return transaction.discard()", duels_source)
+        self.assertIn("self._submit_selected_kit(", duels_source)
+        self.assertIn("self._send_challenge(challenger, target_id, kit_name)", duels_source)
         self.assertIn("class PlayerBackup:", duels_source)
         self.assertIn("self.player_backups: dict[UUID, PlayerBackup] = {}", duels_source)
         self.assertIn(

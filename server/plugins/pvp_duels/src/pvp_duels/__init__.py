@@ -16,7 +16,6 @@ from endstone.form import ActionForm
 from endstone.inventory import ItemStack
 from endstone.level import Dimension, Location
 from endstone.plugin import Plugin
-from endstone_inventoryui import Menu, MenuTransaction, MenuTransactionResult, MenuType
 
 
 ARENA_X = 0.0
@@ -38,11 +37,7 @@ ARENA_CLEANUP_RADIUS = 64.0
 ARENA_FLOOR_BLOCK = "minecraft:smooth_stone"
 ARENA_WALL_BLOCK = "minecraft:glass"
 ARENA_ROOF_BLOCK = "minecraft:glass"
-KIT_MENU_OPTIONS = {
-    11: ("Netherite Kit", "minecraft:netherite_sword", "§6§lNetherite Kit"),
-    13: ("Crystal PvP Kit", "minecraft:end_crystal", "§b§lCrystal PvP Kit"),
-    15: ("Archer Kit", "minecraft:bow", "§a§lArcher Kit"),
-}
+KIT_NAMES = ("Netherite Kit", "Crystal PvP Kit", "Archer Kit")
 
 
 def _find_online_player(server: object, args: list[str]) -> Player | None:
@@ -94,7 +89,6 @@ class DuelMatch:
 class PvPDuelsPlugin(Plugin):
     api_version = "0.11"
     prefix = "PvPDuels"
-    depend = ["inventoryui"]
 
     commands = {
         "pvp": {
@@ -276,56 +270,21 @@ class PvPDuelsPlugin(Plugin):
             player.send_message("Error: The sky arena is currently in use.")
             return
 
-        menu = Menu(MenuType.CHEST, name="Choose a PvP Kit")
+        form = ActionForm(
+            title="Choose a PvP Kit",
+            content=f"Choose a kit for your duel challenge to {target.name}.",
+        )
         target_id = target.unique_id
-
-        for slot, (_, item_type, display_name) in KIT_MENU_OPTIONS.items():
-            menu.inventory.set_item(
-                slot,
-                self._menu_icon(item_type, display_name),
+        for kit_name in KIT_NAMES:
+            form.add_button(
+                kit_name,
+                on_click=lambda current_player, selected_kit=kit_name: self._send_challenge(
+                    current_player,
+                    target_id,
+                    selected_kit,
+                ),
             )
-
-        def select_kit(transaction: MenuTransaction) -> MenuTransactionResult:
-            option = KIT_MENU_OPTIONS.get(transaction.slot)
-            if option is not None:
-                kit_name = option[0]
-                player_id = transaction.player.unique_id
-                self.server.scheduler.run_task(
-                    self,
-                    lambda: self._submit_selected_kit(
-                        player_id,
-                        target_id,
-                        kit_name,
-                        menu,
-                    ),
-                    delay=1,
-                )
-            return transaction.discard()
-
-        menu.set_listener(select_kit)
-        menu.send_to(player)
-
-    def _submit_selected_kit(
-        self,
-        player_id: UUID,
-        target_id: UUID,
-        kit_name: str,
-        menu: Menu,
-    ) -> None:
-        challenger = self.server.get_player(player_id)
-        if challenger is None:
-            return
-        menu.close(challenger)
-        self._send_challenge(challenger, target_id, kit_name)
-
-    @staticmethod
-    def _menu_icon(item_type: str, display_name: str) -> ItemStack:
-        item = ItemStack(item_type)
-        meta = item.item_meta
-        meta.display_name = display_name
-        if not item.set_item_meta(meta):
-            raise ValueError(f"Could not set the kit menu icon name for {item_type}.")
-        return item
+        player.send_form(form)
 
     def _send_challenge(self, challenger: Player, target_id: UUID, kit_name: str) -> None:
         target = self.server.get_player(target_id)

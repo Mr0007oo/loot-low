@@ -97,6 +97,14 @@ class BedrockRuntimeTests(unittest.TestCase):
             encoding="utf-8"
         )
         self.assertIn("push:\n    branches: [main]", workflow)
+        self.assertEqual(
+            workflow.count("if: ${{ github.repository == 'Mr0007oo/loot-low' }}"),
+            2,
+        )
+        self.assertIn(
+            "if: ${{ always() && github.repository == 'Mr0007oo/loot-low' }}",
+            workflow,
+        )
         self.assertIn("pip wheel", workflow)
         self.assertIn("Server utilities enabled.", workflow)
         self.assertIn("fun_plugins", workflow)
@@ -176,11 +184,15 @@ class BedrockRuntimeTests(unittest.TestCase):
         self.assertIn("python3 scripts/persist_world.py", workflow)
         self.assertIn("persist-credentials: true", workflow)
         self.assertIn("token: ${{ github.token }}", workflow)
-        self.assertIn("TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}", workflow)
-        self.assertIn("TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}", workflow)
-        self.assertIn("python3 scripts/telegram_console.py", workflow)
-        self.assertIn("Telegram admin requested graceful server shutdown.", workflow)
-        self.assertIn("if: ${{ always() }}", workflow)
+        self.assertNotIn("TELEGRAM_BOT_TOKEN", workflow)
+        self.assertNotIn("TELEGRAM_CHAT_ID", workflow)
+        self.assertNotIn("scripts/telegram_console.py", workflow)
+        self.assertNotIn("getUpdates", workflow)
+        self.assertIn("Telegram polling is managed by the external controller.", workflow)
+        self.assertIn(
+            "if: ${{ always() && github.repository == 'Mr0007oo/loot-low' }}",
+            workflow,
+        )
         self.assertIn("vars.WORLD_RECOVERY_COMMIT", workflow)
         self.assertIn("bedrock-world-seed-9064150133272194-", workflow)
         self.assertNotIn("restore-keys: bedrock-world-\n", workflow)

@@ -4,12 +4,7 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
-  workflow_call:
-    secrets:
-      TELEGRAM_BOT_TOKEN:
-        required: true
-      TELEGRAM_CHAT_ID:
-        required: true
+  workflow_call: {}
 
 permissions:
   contents: read
@@ -110,7 +105,7 @@ jobs:
         run: python3 scripts/download_deps.py --check
 
       - name: Restore missing legacy world directories
-        if: ${{ vars.WORLD_RECOVERY_COMMIT != '' }}
+        if: ${{ github.repository == 'Mr0007oo/loot-low' && vars.WORLD_RECOVERY_COMMIT != '' }}
         run: python3 scripts/persist_world.py --restore-only "$WORLD_RECOVERY_COMMIT"
 
       - name: Assert native-only server artifacts
@@ -121,6 +116,7 @@ jobs:
           fi
 
       - name: Download and validate FRP client
+        if: ${{ github.repository == 'Mr0007oo/loot-low' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -148,40 +144,26 @@ jobs:
           ./frpc verify -c frpc.toml
 
       - name: Start FRP and native Bedrock server
+        if: ${{ github.repository == 'Mr0007oo/loot-low' }}
         id: run-server
         timeout-minutes: 330
         shell: bash
-        env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
           set -uo pipefail
-          if [[ -z "${TELEGRAM_BOT_TOKEN:-}" || -z "${TELEGRAM_CHAT_ID:-}" ]]; then
-            echo "ERROR: TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID secrets are required." >&2
-            exit 1
-          fi
           mkdir -p server/logs
           server_log="server/logs/server-session.log"
           watchdog_log="server/logs/watchdog.log"
-          telegram_log="server/logs/telegram-console.log"
           console_fifo="$RUNNER_TEMP/loot-low-console.fifo"
-          stop_request="$RUNNER_TEMP/loot-low-stop.request"
-          rm -f -- "$console_fifo" "$stop_request"
+          rm -f -- "$console_fifo"
           export SERVER_CONSOLE_FIFO="$console_fifo"
-          export SERVER_STOP_FILE="$stop_request"
           : >"$server_log"
           : >"$watchdog_log"
-          : >"$telegram_log"
-          tail -n 0 -F "$server_log" "$watchdog_log" "$telegram_log" &
+          tail -n 0 -F "$server_log" "$watchdog_log" &
           LOG_TAIL_PID=$!
 
           cleanup() {
             local exit_status=$?
             trap - EXIT INT TERM
-            if [[ -n "${TELEGRAM_PID:-}" ]] && kill -0 "$TELEGRAM_PID" 2>/dev/null; then
-              kill -TERM "$TELEGRAM_PID" 2>/dev/null || true
-              wait "$TELEGRAM_PID" 2>/dev/null || true
-            fi
             if [[ -n "${WATCHDOG_PID:-}" ]] && kill -0 "$WATCHDOG_PID" 2>/dev/null; then
               kill -TERM "$WATCHDOG_PID" 2>/dev/null || true
               wait "$WATCHDOG_PID" 2>/dev/null || true
@@ -194,7 +176,7 @@ jobs:
               kill -TERM "$LOG_TAIL_PID" 2>/dev/null || true
               wait "$LOG_TAIL_PID" 2>/dev/null || true
             fi
-            rm -f -- "$console_fifo" "$stop_request"
+            rm -f -- "$console_fifo"
             if ! python3 scripts/persist_world.py; then
               echo "ERROR: World persistence failed during workflow shutdown." >&2
               if [[ "$exit_status" -eq 0 ]]; then
@@ -262,26 +244,9 @@ jobs:
           shutdown_after_seconds=$((5 * 60 * 60 + 25 * 60))
           warning_sent=false
 
-          python3 scripts/telegram_console.py >>"$telegram_log" 2>&1 &
-          TELEGRAM_PID=$!
-          echo "Telegram admin console is active. Use /cmd <command> or /stop."
+          echo "Bedrock server is running; Telegram polling is managed by the external controller."
 
           while true; do
-            if [[ -f "$stop_request" ]]; then
-              echo "Telegram admin requested graceful server shutdown."
-              kill -TERM "$WATCHDOG_PID" 2>/dev/null || true
-              if wait "$WATCHDOG_PID"; then
-                server_status=0
-              else
-                server_status=$?
-              fi
-              WATCHDOG_PID=""
-              if [[ "$server_status" -ne 0 && "$server_status" -ne 143 ]]; then
-                exit "$server_status"
-              fi
-              exit 0
-            fi
-
             elapsed_seconds=$((SECONDS - server_started_at))
             if [[ "$warning_sent" != true ]] && (( elapsed_seconds >= warning_after_seconds )); then
               printf 'say Server time is up. The server will shut down in 5 minutes; please contact an admin to restart it.\n' >"$console_fifo"
@@ -303,17 +268,6 @@ jobs:
               exit 0
             fi
 
-            if ! kill -0 "$TELEGRAM_PID" 2>/dev/null; then
-              if wait "$TELEGRAM_PID"; then
-                telegram_status=0
-              else
-                telegram_status=$?
-              fi
-              cat "$telegram_log" || true
-              echo "ERROR: Telegram console exited with status ${telegram_status}." >&2
-              exit "${telegram_status:-1}"
-            fi
-
             if ! kill -0 "$WATCHDOG_PID" 2>/dev/null; then
               if wait "$WATCHDOG_PID"; then
                 server_status=0
@@ -326,6 +280,6 @@ jobs:
           done
 
       - name: Persist world data to main
-        if: ${{ always() }}
+        if: ${{ always() && github.repository == 'Mr0007oo/loot-low' }}
         timeout-minutes: 10
         run: python3 scripts/persist_world.py
